@@ -1,0 +1,24 @@
+{
+  "name": "kpm-fullstack-app",
+  "version": "1.0.0",
+  "description": "Full-stack application with Next.js frontend, Python FastAPI backend, and PostgreSQL database.",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -Command \"& backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000 --host 127.0.0.1\"",
+    "build:frontend": "cd frontend && npm run build",
+    "lint:frontend": "cd frontend && npm run lint",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down"
+  },
+  "keywords": [
+    "nextjs",
+    "react",
+    "python",
+    "fastapi",
+    "postgresql",
+    "sqlalchemy",
+    "fullstack"
+  ],
+  "author": "",
+  "license": "MIT"
+}
