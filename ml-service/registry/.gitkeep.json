@@ -1,0 +1,5 @@
+{
+  "purpose": "Filesystem model registry root",
+  "layout": "registry/{tenant_id}/{model_name}/{version}/meta.json + model.joblib",
+  "models": ["recon_ranker", "anomaly_if"]
+}

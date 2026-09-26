@@ -5,8 +5,14 @@
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "powershell -ExecutionPolicy Bypass -Command \"& backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000 --host 127.0.0.1\"",
+    "dev:ml": "powershell -ExecutionPolicy Bypass -Command \"& ml-service\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir ml-service --reload --port 8001 --host 127.0.0.1\"",
+    "dev:ml-worker": "powershell -ExecutionPolicy Bypass -Command \"Set-Location ml-service; & .\\.venv\\Scripts\\python.exe -m app.worker\"",
     "build:frontend": "cd frontend && npm run build",
     "lint:frontend": "cd frontend && npm run lint",
+    "test:backend": "powershell -ExecutionPolicy Bypass -Command \"& backend\\.venv\\Scripts\\python.exe backend\\tests\\test_api.py\"",
+    "test:frontend": "cd frontend && npm test",
+    "test:e2e": "cd frontend && npm run test:e2e",
+    "test": "npm run test:backend && npm run test:frontend",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },

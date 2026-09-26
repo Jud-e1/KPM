@@ -1,10 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Navbar } from "@/components/landing/Navbar";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
-import { TrustBanner } from "@/components/landing/TrustBanner";
+import {
+  SolutionsSection,
+  PricingSection,
+  ResourcesSection,
+  LandingFooter,
+} from "@/components/landing/LandingSections";
+import { ScrollReveal } from "@/components/landing/ScrollReveal";
+import {
+  CommunitySection,
+  FaqNewsletter,
+  StatsBar,
+} from "@/components/landing/LandingStory";
 import {
   SearchModal,
   AuthModal,
@@ -23,12 +34,19 @@ export default function LandingPage() {
   const [isOrderOpen, setIsOrderOpen] = useState(false);
   const [isForecastOpen, setIsForecastOpen] = useState(false);
 
-  const handleOpenAuth = (mode: "login" | "signup") => {
-    setAuthModal({ isOpen: true, mode });
-  };
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const handleCloseAuth = () => {
-    setAuthModal({ ...authModal, isOpen: false });
+    setAuthModal((prev) => ({ ...prev, isOpen: false }));
   };
 
   const handleSwitchAuthMode = (mode: "login" | "signup") => {
@@ -36,43 +54,57 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFDFE] text-[#0F172A] flex flex-col selection:bg-[#0F172A] selection:text-white">
-      {/* 1. Navigation Bar */}
-      <Navbar
-        onOpenSearch={() => setIsSearchOpen(true)}
-        onOpenAuth={handleOpenAuth}
-      />
+    <div className="min-h-screen bg-[#F4F7FB] p-3 text-[#0F172A] selection:bg-[#0F172A] selection:text-white sm:p-4">
+      <div className="relative mx-auto min-h-[calc(100vh-1.5rem)] w-full overflow-hidden rounded-[24px] bg-[var(--app-surface)] shadow-[0_24px_60px_-28px_rgba(15,23,42,0.28)] sm:min-h-[calc(100vh-2rem)]">
+        <Navbar onOpenSearch={() => setIsSearchOpen(true)} />
 
-      {/* Main Landing Page Content */}
-      <main className="flex-1 space-y-4 sm:space-y-8">
-        {/* 2. Hero Section with 3D Dashboard Mockup & Floating Badges */}
-        <HeroSection
-          onOpenAuth={handleOpenAuth}
-          onOpenDemo={() => setIsDemoOpen(true)}
-          onOrderNowClick={() => setIsOrderOpen(true)}
-          onViewForecastClick={() => setIsForecastOpen(true)}
-          onErrorDetectionClick={() => setIsForecastOpen(true)}
-          onB2BIntegrationClick={() => setIsSearchOpen(true)}
-        />
+        <main>
+          <HeroSection
+            onOpenDemo={() => setIsDemoOpen(true)}
+            onOrderNowClick={() => setIsOrderOpen(true)}
+            onViewForecastClick={() => setIsForecastOpen(true)}
+            onErrorDetectionClick={() => setIsForecastOpen(true)}
+            onB2BIntegrationClick={() => setIsSearchOpen(true)}
+          />
 
-        {/* 3. Powerful Features 6-Card Grid */}
-        <FeaturesSection
-          onSelectFeature={() => setIsSearchOpen(true)}
-        />
+          <ScrollReveal>
+            <StatsBar />
+          </ScrollReveal>
 
-        {/* 4. Trusted by Businesses Worldwide Banner */}
-        <TrustBanner
-          onJoinClick={() => handleOpenAuth("signup")}
-        />
-      </main>
+          <div id="about">
+            <ScrollReveal>
+              <FeaturesSection />
+            </ScrollReveal>
+            <ScrollReveal>
+              <SolutionsSection />
+            </ScrollReveal>
+          </div>
 
-      {/* ======================================================= */}
-      {/* Interactive Modals & Command Dialogs                    */}
-      {/* ======================================================= */}
-      <SearchModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-      />
+          <ScrollReveal>
+            <CommunitySection />
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <PricingSection />
+          </ScrollReveal>
+
+          <div id="blog">
+            <ScrollReveal>
+              <ResourcesSection onOpenDemo={() => setIsDemoOpen(true)} />
+            </ScrollReveal>
+          </div>
+
+          <ScrollReveal>
+            <FaqNewsletter />
+          </ScrollReveal>
+        </main>
+
+        <ScrollReveal>
+          <LandingFooter onOpenDemo={() => setIsDemoOpen(true)} />
+        </ScrollReveal>
+      </div>
+
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
       <AuthModal
         isOpen={authModal.isOpen}
@@ -81,20 +113,11 @@ export default function LandingPage() {
         onSwitchMode={handleSwitchAuthMode}
       />
 
-      <DemoVideoModal
-        isOpen={isDemoOpen}
-        onClose={() => setIsDemoOpen(false)}
-      />
+      <DemoVideoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
 
-      <OrderModal
-        isOpen={isOrderOpen}
-        onClose={() => setIsOrderOpen(false)}
-      />
+      <OrderModal isOpen={isOrderOpen} onClose={() => setIsOrderOpen(false)} />
 
-      <ForecastModal
-        isOpen={isForecastOpen}
-        onClose={() => setIsForecastOpen(false)}
-      />
+      <ForecastModal isOpen={isForecastOpen} onClose={() => setIsForecastOpen(false)} />
     </div>
   );
 }

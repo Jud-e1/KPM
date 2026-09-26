@@ -5,6 +5,11 @@ import {
   fetchSalesOrders,
   fetchSalesSummary,
 } from "@/lib/api";
+import {
+  readScopedJson,
+  removeScopedJson,
+  writeScopedJson,
+} from "@/lib/storePersistence";
 
 export interface SalesOrder {
   id: string;
@@ -18,6 +23,14 @@ export interface SalesOrder {
   totalAmount: number;
   status: "Completed" | "Pending" | "Processing" | "Cancelled";
   channel: "Online Store" | "Direct Sales" | "Retail Partners" | "Wholesale";
+  lines?: Array<{
+    productId: string | null;
+    sku: string;
+    productName: string;
+    qty: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
 }
 
 export interface ChannelMetric {
@@ -52,203 +65,24 @@ export interface SalesState {
   syncedRemoteOrderIds?: string[];
 }
 
-const STORAGE_KEY = "kpm_sales_state_v1";
+const STORAGE_KEY = "kpm_sales_state_v2";
 const SYNC_CHANNEL_NAME = "kpm_sales_sync_channel";
 
-// Featured 5 orders visible in screenshot
-const FEATURED_ORDERS: SalesOrder[] = [
-  {
-    id: "order-0048",
-    orderNumber: "SO-0048",
-    customerName: "BrightMart Stores",
-    customerId: "#CUST-1001",
-    date: "Apr 30, 2025",
-    time: "2:14 PM",
-    timestamp: new Date("2025-04-30T14:14:00").getTime(),
-    itemsCount: 5,
-    totalAmount: 1250.0,
-    status: "Completed",
-    channel: "Direct Sales",
-  },
-  {
-    id: "order-0047",
-    orderNumber: "SO-0047",
-    customerName: "TechWorld Ltd",
-    customerId: "#CUST-1002",
-    date: "Apr 29, 2025",
-    time: "11:32 AM",
-    timestamp: new Date("2025-04-29T11:32:00").getTime(),
-    itemsCount: 3,
-    totalAmount: 850.0,
-    status: "Completed",
-    channel: "Online Store",
-  },
-  {
-    id: "order-0046",
-    orderNumber: "SO-0046",
-    customerName: "Home Essentials",
-    customerId: "#CUST-1003",
-    date: "Apr 28, 2025",
-    time: "3:45 PM",
-    timestamp: new Date("2025-04-28T15:45:00").getTime(),
-    itemsCount: 8,
-    totalAmount: 2340.0,
-    status: "Completed",
-    channel: "Retail Partners",
-  },
-  {
-    id: "order-0045",
-    orderNumber: "SO-0045",
-    customerName: "Office Hub",
-    customerId: "#CUST-1004",
-    date: "Apr 27, 2025",
-    time: "10:21 AM",
-    timestamp: new Date("2025-04-27T10:21:00").getTime(),
-    itemsCount: 2,
-    totalAmount: 620.0,
-    status: "Pending",
-    channel: "Online Store",
-  },
-  {
-    id: "order-0044",
-    orderNumber: "SO-0044",
-    customerName: "Global Fashion",
-    customerId: "#CUST-1005",
-    date: "Apr 26, 2025",
-    time: "4:17 PM",
-    timestamp: new Date("2025-04-26T16:17:00").getTime(),
-    itemsCount: 6,
-    totalAmount: 1780.0,
-    status: "Completed",
-    channel: "Wholesale",
-  },
-];
-
-const INITIAL_TOP_PRODUCTS: TopProductMetric[] = [
-  {
-    id: "tp-1",
-    name: "Wireless Headphones",
-    sku: "WH-001",
-    soldCount: 42,
-    revenue: 5880.0,
-    iconType: "headphones",
-  },
-  {
-    id: "tp-2",
-    name: "Smart Watch Series 8",
-    sku: "SW-008",
-    soldCount: 36,
-    revenue: 7164.0,
-    iconType: "watch",
-  },
-  {
-    id: "tp-3",
-    name: "Laptop Backpack",
-    sku: "BP-015",
-    soldCount: 28,
-    revenue: 1372.0,
-    iconType: "backpack",
-  },
-  {
-    id: "tp-4",
-    name: "USB-C Charging Cable",
-    sku: "CC-034",
-    soldCount: 24,
-    revenue: 596.0,
-    iconType: "cable",
-  },
-  {
-    id: "tp-5",
-    name: "Notebook (A5)",
-    sku: "NB-056",
-    soldCount: 18,
-    revenue: 324.0,
-    iconType: "notebook",
-  },
-];
-
-const INITIAL_CHANNELS: ChannelMetric[] = [
-  { name: "Online Store", percentage: 52, amount: 25350, color: "#0F172A" },
-  { name: "Direct Sales", percentage: 24, amount: 11700, color: "#3B82F6" },
-  { name: "Retail Partners", percentage: 14, amount: 6825, color: "#60A5FA" },
-  { name: "Wholesale", percentage: 10, amount: 4875, color: "#818CF8" },
-];
-
-function generateInitialOrders(): SalesOrder[] {
-  const orders: SalesOrder[] = [...FEATURED_ORDERS];
-  
-  const customerPool = [
-    { name: "Summit Retailers", id: "#CUST-1006" },
-    { name: "Apex Electronics", id: "#CUST-1007" },
-    { name: "Urban Lifestyle", id: "#CUST-1008" },
-    { name: "Nordic Goods Co.", id: "#CUST-1009" },
-    { name: "Pacific Trade Inc.", id: "#CUST-1010" },
-    { name: "Metro Supplies", id: "#CUST-1011" },
-    { name: "Velox Systems", id: "#CUST-1012" },
-  ];
-
-  const channels: SalesOrder["channel"][] = [
-    "Online Store",
-    "Direct Sales",
-    "Retail Partners",
-    "Wholesale",
-  ];
-
-  // 243 more orders to equal 248 total orders
-  for (let i = 43; i >= 1; i--) {
-    const numStr = String(i).padStart(4, "0");
-    const cust = customerPool[i % customerPool.length];
-    const day = Math.max(1, (i % 25) + 1);
-    const hour = (9 + (i % 8)).toString().padStart(2, "0");
-    const min = ((i * 13) % 60).toString().padStart(2, "0");
-    const items = 1 + (i % 9);
-    const amount = Number((95 + (i * 27.5) % 1100).toFixed(2));
-    const channel = channels[i % channels.length];
-    const isPending = i % 11 === 0;
-
-    orders.push({
-      id: `order-${numStr}`,
-      orderNumber: `SO-${numStr}`,
-      customerName: cust.name,
-      customerId: cust.id,
-      date: `Apr ${day}, 2025`,
-      time: `${hour}:${min} ${Number(hour) >= 12 ? "PM" : "AM"}`,
-      timestamp: new Date(`2025-04-${String(day).padStart(2, "0")}T${hour}:${min}:00`).getTime(),
-      itemsCount: items,
-      totalAmount: amount,
-      status: isPending ? "Pending" : "Completed",
-      channel,
-    });
-  }
-
-  // Extend further up to 248 total items for accurate pagination
-  for (let i = 248; i > 48; i--) {
-    const numStr = String(i).padStart(4, "0");
-    const cust = customerPool[i % customerPool.length];
-    const day = Math.max(1, (i % 28) + 1);
-    const items = 2 + (i % 7);
-    const amount = Number((80 + (i * 18.2) % 950).toFixed(2));
-
-    orders.push({
-      id: `order-${numStr}`,
-      orderNumber: `SO-${numStr}`,
-      customerName: cust.name,
-      customerId: cust.id,
-      date: `Apr ${day}, 2025`,
-      time: "1:30 PM",
-      timestamp: new Date(`2025-04-${String(day).padStart(2, "0")}T13:30:00`).getTime(),
-      itemsCount: items,
-      totalAmount: amount,
-      status: i % 14 === 0 ? "Pending" : "Completed",
-      channel: channels[i % channels.length],
-    });
-  }
-
-  return orders;
+function emptySalesMetrics(): SalesMetrics {
+  return {
+    totalRevenue: 0,
+    totalOrders: 0,
+    averageOrderValue: 0,
+    outstandingInvoices: 0,
+    channelBreakdown: [
+      { name: "Online Store", percentage: 0, amount: 0, color: "#121417" },
+      { name: "Direct Sales", percentage: 0, amount: 0, color: "#5c6570" },
+      { name: "Retail Partners", percentage: 0, amount: 0, color: "#8b939e" },
+      { name: "Wholesale", percentage: 0, amount: 0, color: "#d5d8de" },
+    ],
+    topProducts: [],
+  };
 }
-
-const BASELINE_ORDERS = generateInitialOrders();
-const BASELINE_ORDER_IDS = new Set(BASELINE_ORDERS.map((order) => order.id));
 
 type RawSalesTotals = {
   revenue: number;
@@ -278,8 +112,6 @@ function getRawSalesTotals(orders: SalesOrder[]): RawSalesTotals {
 
   return { revenue, outstanding, channels };
 }
-
-const BASELINE_RAW_TOTALS = getRawSalesTotals(BASELINE_ORDERS);
 
 function isSalesStatus(value: string): value is SalesOrder["status"] {
   return ["Completed", "Pending", "Processing", "Cancelled"].includes(value);
@@ -315,7 +147,7 @@ function mapBackendOrder(order: ApiSalesOrder): SalesOrder {
     id: order.id,
     orderNumber: order.order_number,
     customerName: order.customer_name,
-    customerId: order.customer_id || "#CUST-N/A",
+    customerId: order.customer_id || "",
     date: displayDate.date,
     time: displayDate.time,
     timestamp: displayDate.timestamp,
@@ -323,52 +155,76 @@ function mapBackendOrder(order: ApiSalesOrder): SalesOrder {
     totalAmount: order.total_amount,
     status: isSalesStatus(order.status) ? order.status : "Pending",
     channel: isSalesChannel(order.channel) ? order.channel : "Online Store",
+    lines: (order.lines || []).map((line) => ({
+      productId: line.product_id,
+      sku: line.sku,
+      productName: line.product_name,
+      qty: line.qty,
+      unitPrice: line.unit_price,
+      lineTotal: line.line_total,
+    })),
   };
 }
 
 export function computeSalesMetrics(orders: SalesOrder[]): SalesMetrics {
+  if (!orders.length) return emptySalesMetrics();
+
   const totalOrders = orders.length;
   const rawTotals = getRawSalesTotals(orders);
-
-  // The supplied screen starts with representative sales data calibrated to its
-  // displayed totals. Keep that baseline, then apply every live order delta.
-  const totalRevenue = rawTotals.revenue - BASELINE_RAW_TOTALS.revenue + 48750;
-  const outstandingInvoices = rawTotals.outstanding - BASELINE_RAW_TOTALS.outstanding + 6420;
-  const channelTotals: RawSalesTotals["channels"] = {
-    "Online Store": rawTotals.channels["Online Store"] - BASELINE_RAW_TOTALS.channels["Online Store"] + INITIAL_CHANNELS[0].amount,
-    "Direct Sales": rawTotals.channels["Direct Sales"] - BASELINE_RAW_TOTALS.channels["Direct Sales"] + INITIAL_CHANNELS[1].amount,
-    "Retail Partners": rawTotals.channels["Retail Partners"] - BASELINE_RAW_TOTALS.channels["Retail Partners"] + INITIAL_CHANNELS[2].amount,
-    Wholesale: rawTotals.channels.Wholesale - BASELINE_RAW_TOTALS.channels.Wholesale + INITIAL_CHANNELS[3].amount,
-  };
-
+  const totalRevenue = rawTotals.revenue;
+  const outstandingInvoices = rawTotals.outstanding;
   const averageOrderValue = totalOrders > 0 ? Number((totalRevenue / totalOrders).toFixed(2)) : 0;
 
-  const channelBreakdown: ChannelMetric[] = [
-    {
-      name: "Online Store",
-      percentage: totalRevenue > 0 ? Math.round((channelTotals["Online Store"] / totalRevenue) * 100) || 52 : 52,
-      amount: Math.round(channelTotals["Online Store"]),
-      color: "#0F172A",
-    },
-    {
-      name: "Direct Sales",
-      percentage: totalRevenue > 0 ? Math.round((channelTotals["Direct Sales"] / totalRevenue) * 100) || 24 : 24,
-      amount: Math.round(channelTotals["Direct Sales"]),
-      color: "#3B82F6",
-    },
-    {
-      name: "Retail Partners",
-      percentage: totalRevenue > 0 ? Math.round((channelTotals["Retail Partners"] / totalRevenue) * 100) || 14 : 14,
-      amount: Math.round(channelTotals["Retail Partners"]),
-      color: "#60A5FA",
-    },
-    {
-      name: "Wholesale",
-      percentage: totalRevenue > 0 ? Math.round((channelTotals["Wholesale"] / totalRevenue) * 100) || 10 : 10,
-      amount: Math.round(channelTotals["Wholesale"]),
-      color: "#818CF8",
-    },
-  ];
+  const channelBreakdown: ChannelMetric[] = (
+    [
+      ["Online Store", "#121417"],
+      ["Direct Sales", "#5c6570"],
+      ["Retail Partners", "#8b939e"],
+      ["Wholesale", "#d5d8de"],
+    ] as const
+  ).map(([name, color]) => {
+    const amount = rawTotals.channels[name];
+    return {
+      name,
+      percentage: totalRevenue > 0 ? Math.round((amount / totalRevenue) * 100) : 0,
+      amount: Math.round(amount),
+      color,
+    };
+  });
+
+  const productMap = new Map<string, TopProductMetric>();
+  for (const order of orders) {
+    if (order.status === "Cancelled") continue;
+    const lines = order.lines || [];
+    if (lines.length) {
+      for (const line of lines) {
+        const key = line.sku || line.productName;
+        const existing = productMap.get(key);
+        const revenue = line.lineTotal || line.qty * line.unitPrice;
+        if (existing) {
+          existing.soldCount += line.qty;
+          existing.revenue = Number((existing.revenue + revenue).toFixed(2));
+        } else {
+          productMap.set(key, {
+            id: line.productId || key,
+            name: line.productName || line.sku,
+            sku: line.sku,
+            soldCount: line.qty,
+            revenue: Number(revenue.toFixed(2)),
+            iconType: "notebook",
+          });
+        }
+      }
+    }
+  }
+
+  const topProducts: TopProductMetric[] = [...productMap.values()]
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5)
+    .map((item, index) => ({
+      ...item,
+      iconType: (["headphones", "watch", "backpack", "cable", "notebook"] as const)[index % 5],
+    }));
 
   return {
     totalRevenue: Number(totalRevenue.toFixed(2)),
@@ -376,7 +232,7 @@ export function computeSalesMetrics(orders: SalesOrder[]): SalesMetrics {
     averageOrderValue,
     outstandingInvoices: Number(outstandingInvoices.toFixed(2)),
     channelBreakdown,
-    topProducts: INITIAL_TOP_PRODUCTS,
+    topProducts,
   };
 }
 
@@ -405,50 +261,53 @@ class SalesStore {
       } catch {}
 
       window.addEventListener("storage", (e) => {
-        if (e.key === STORAGE_KEY && e.newValue) {
-          try {
-            this.state = JSON.parse(e.newValue);
-            this.notify(false);
-          } catch {}
-        }
+        if (!e.key?.startsWith(`${STORAGE_KEY}:`) || !e.newValue) return;
+        if (this.ownerId && e.key !== `${STORAGE_KEY}:${this.ownerId}`) return;
+        try {
+          this.state = JSON.parse(e.newValue);
+          this.notify(false);
+        } catch {}
       });
     }
   }
 
+  private ownerId: string | null = null;
+
+  public bindOwner(userId: string) {
+    if (this.ownerId === userId) return;
+    this.ownerId = userId;
+    this.remoteRevision = null;
+    this.state = this.loadStateFor(userId);
+    this.notify();
+    void this.syncFromBackend(true);
+  }
+
   private loadState(): SalesState {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.orders && parsed.orders.length > 0) {
-            parsed.metrics = computeSalesMetrics(parsed.orders);
-            parsed.syncedRemoteOrderIds = Array.isArray(parsed.syncedRemoteOrderIds)
-              ? parsed.syncedRemoteOrderIds
-              : [];
-            return parsed;
-          }
-        }
-      } catch {}
-    }
-
-    const initialOrders = generateInitialOrders();
-    const initialMetrics = computeSalesMetrics(initialOrders);
-
     return {
-      orders: initialOrders,
-      metrics: initialMetrics,
+      orders: [],
+      metrics: emptySalesMetrics(),
       lastSync: new Date().toISOString(),
       syncedRemoteOrderIds: [],
     };
   }
 
+  private loadStateFor(userId: string): SalesState {
+    const parsed = readScopedJson<SalesState>(STORAGE_KEY, userId);
+    if (parsed && Array.isArray(parsed.orders)) {
+      return {
+        ...parsed,
+        metrics: computeSalesMetrics(parsed.orders),
+        syncedRemoteOrderIds: Array.isArray(parsed.syncedRemoteOrderIds)
+          ? parsed.syncedRemoteOrderIds
+          : [],
+      };
+    }
+    return this.loadState();
+  }
+
   private persist() {
     if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
-      } catch {}
-
+      writeScopedJson(STORAGE_KEY, this.ownerId, this.state);
       if (this.broadcastChannel) {
         try {
           this.broadcastChannel.postMessage({
@@ -550,20 +409,10 @@ class SalesStore {
     const mappedRemoteOrders = remoteOrders.map(mapBackendOrder);
     const remoteById = new Map(mappedRemoteOrders.map((order) => [order.id, order]));
     const previousRemoteIds = new Set(this.state.syncedRemoteOrderIds || []);
-    const localOrders = this.state.orders;
-
-    // Preserve the supplied screen's baseline and any locally-created order
-    // still waiting to reach the backend. Remote records override matching IDs.
-    const unsyncedLocalOrders = localOrders.filter(
-      (order) => !BASELINE_ORDER_IDS.has(order.id) && !previousRemoteIds.has(order.id) && !remoteById.has(order.id)
+    const unsyncedLocalOrders = this.state.orders.filter(
+      (order) => !previousRemoteIds.has(order.id) && !remoteById.has(order.id)
     );
-    const baselineOrders = localOrders
-      .filter((order) => BASELINE_ORDER_IDS.has(order.id))
-      .map((order) => remoteById.get(order.id) || order);
-    const remoteNonBaselineOrders = mappedRemoteOrders.filter(
-      (order) => !BASELINE_ORDER_IDS.has(order.id)
-    );
-    const nextOrders = [...unsyncedLocalOrders, ...remoteNonBaselineOrders, ...baselineOrders];
+    const nextOrders = [...unsyncedLocalOrders, ...mappedRemoteOrders];
 
     this.remoteRevision = revision;
     this.state = {
@@ -577,10 +426,12 @@ class SalesStore {
 
   public createOrder(input: {
     customerName: string;
+    customerId?: string;
     itemsCount: number;
     totalAmount: number;
     channel?: SalesOrder["channel"];
     status?: SalesOrder["status"];
+    lines?: SalesOrder["lines"];
   }): SalesOrder {
     const nextNum = (this.state.orders.length + 1).toString().padStart(4, "0");
     const now = new Date();
@@ -595,7 +446,7 @@ class SalesStore {
       id: `order-${Date.now()}`,
       orderNumber: `SO-${nextNum}`,
       customerName: input.customerName.trim(),
-      customerId: `#CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+      customerId: input.customerId?.trim() || "",
       date: formattedDate,
       time: formattedTime,
       timestamp: Date.now(),
@@ -603,6 +454,7 @@ class SalesStore {
       totalAmount: Number(input.totalAmount) || 0,
       status: input.status || "Completed",
       channel: input.channel || "Online Store",
+      lines: input.lines,
     };
 
     const newOrders = [newOrder, ...this.state.orders];
@@ -676,16 +528,19 @@ class SalesStore {
   }
 
   public resetToDefault() {
+    removeScopedJson(STORAGE_KEY, this.ownerId);
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch {}
     }
-    const initialOrders = generateInitialOrders();
+    this.ownerId = null;
+    this.remoteRevision = null;
     this.state = {
-      orders: initialOrders,
-      metrics: computeSalesMetrics(initialOrders),
+      orders: [],
+      metrics: emptySalesMetrics(),
       lastSync: new Date().toISOString(),
+      syncedRemoteOrderIds: [],
     };
     this.notify();
   }

@@ -38,17 +38,42 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "kpm_db"
+    POSTGRES_SSLMODE: str | None = None
 
     DATABASE_URL: str | None = None
+
+    # Auth
+    SECRET_KEY: str = "kpm-dev-secret-change-me-in-production-32chars"
+    GOOGLE_CLIENT_ID: str | None = None
+
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # Shared secret for ml-service → core internal routes (empty = open in local/dev)
+    ML_SERVICE_TOKEN: str | None = None
+
+    # Redis (optional — summary cache falls back to in-process when unset/unreachable)
+    REDIS_URL: str | None = None
+    REDIS_SUMMARY_TTL_SECONDS: int = 30
+
+    def _with_sslmode(self, url: str) -> str:
+        if not self.POSTGRES_SSLMODE or "sslmode=" in url:
+            return url
+        separator = "&" if "?" in url else "?"
+        return f"{url}{separator}sslmode={self.POSTGRES_SSLMODE}"
 
     @property
     def sync_database_url(self) -> str:
         if self.DATABASE_URL:
             # Ensure it uses postgresql://
             if self.DATABASE_URL.startswith("postgres://"):
-                return self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
-            return self.DATABASE_URL
-        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+                url = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            else:
+                url = self.DATABASE_URL
+            return self._with_sslmode(url)
+        return self._with_sslmode(
+            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
 
 settings = Settings()

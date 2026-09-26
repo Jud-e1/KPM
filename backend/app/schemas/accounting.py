@@ -4,6 +4,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class AccountingCsvImportResponse(BaseModel):
+    imported: int
+    skipped: int
+    message: str
+
+
 class AccountingTransactionBase(BaseModel):
     description: str = Field(..., max_length=255)
     reference: Optional[str] = Field(None, max_length=80)

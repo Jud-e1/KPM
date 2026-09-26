@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ health, loading, onRefreshHealth
                 Next.js + Python + Postgres
               </span>
             </div>
-            <p className="text-xs text-slate-400">Next.js 15 • FastAPI 0.115 • PostgreSQL 18</p>
+            <p className="text-xs text-[var(--app-faint)]">Next.js 15 • FastAPI 0.115 • PostgreSQL 18</p>
           </div>
         </div>
 

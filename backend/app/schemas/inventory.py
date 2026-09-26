@@ -19,6 +19,10 @@ class ProductCreate(ProductBase):
     id: Optional[str] = None
 
 
+class ProductBulkCreate(BaseModel):
+    products: List[ProductCreate] = Field(default_factory=list, max_length=500)
+
+
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     subtitle: Optional[str] = Field(None, max_length=255)
@@ -39,6 +43,11 @@ class ProductResponse(ProductBase):
 
     class Config:
         from_attributes = True
+
+
+class ProductBulkCreateResponse(BaseModel):
+    created: List[ProductResponse]
+    count: int
 
 
 class StockAdjustRequest(BaseModel):

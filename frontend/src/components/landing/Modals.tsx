@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { KpmLogoImage } from "@/components/ui/Logo";
 import {
   X,
   Search,
@@ -9,7 +10,6 @@ import {
   AlertCircle,
   Package,
   TrendingUp,
-  Sparkles,
   Play,
   ArrowRight,
   ShieldCheck,
@@ -24,6 +24,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { createItem } from "@/lib/api";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 // ---------------------------------------------------------------
 // Shared validation helpers
@@ -87,25 +88,25 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
       className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="flex items-center px-4 border-b border-slate-100">
-          <Search className="w-5 h-5 text-slate-400 mr-3 flex-shrink-0" />
+      <div className="w-full max-w-xl rounded-2xl bg-[var(--app-surface)] shadow-2xl border border-[var(--app-border)] overflow-hidden">
+        <div className="flex items-center px-4 border-b border-[var(--app-border)]">
+          <Search className="w-5 h-5 text-[var(--app-faint)] mr-3 flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
             placeholder="Search features, docs, inventory, ledger..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full py-4 text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+            className="w-full py-4 text-sm text-[var(--app-ink)] placeholder-slate-400 focus:outline-none"
           />
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 ml-2">
+          <button onClick={onClose} className="p-1 rounded-lg text-[var(--app-faint)] hover:text-[var(--app-ink)] ml-2">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2">
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">
+            <div className="p-8 text-center text-xs text-[var(--app-muted)]">
               No matching resources found for &quot;{query}&quot;
             </div>
           ) : (
@@ -113,22 +114,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
               <div
                 key={idx}
                 onClick={onClose}
-                className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors group"
+                className="flex items-center justify-between p-3 rounded-xl hover:bg-[var(--app-hover)] cursor-pointer transition-colors group"
               >
                 <div>
-                  <div className="text-sm font-semibold text-slate-900 group-hover:text-blue-600">
+                  <div className="text-sm font-semibold text-[var(--app-ink)] group-hover:text-blue-600">
                     {item.title}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">{item.desc}</div>
+                  <div className="text-xs text-[var(--app-muted)] mt-0.5">{item.desc}</div>
                 </div>
-                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-md ml-3 flex-shrink-0">
+                <span className="text-[10px] font-semibold text-[var(--app-muted)] bg-[var(--app-hover)] px-2 py-1 rounded-md ml-3 flex-shrink-0">
                   {item.category}
                 </span>
               </div>
             ))
           )}
         </div>
-        <div className="bg-slate-50 px-4 py-2 text-[11px] text-slate-500 flex justify-between border-t border-slate-100">
+        <div className="bg-[var(--app-hover)] px-4 py-2 text-[11px] text-[var(--app-muted)] flex justify-between border-t border-[var(--app-border)]">
           <span>Press ESC to close</span>
           <span>Navigation • KPM Engine</span>
         </div>
@@ -165,6 +166,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -172,7 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
   useEffect(() => {
     setEmail(""); setPassword(""); setName(""); setCompany("");
     setBusinessType(""); setErrors({}); setTouched({});
-    setSuccess(false); setLoading(false); setShowPassword(false);
+    setSuccess(false); setLoading(false); setShowPassword(false); setFormError(null);
   }, [mode, isOpen]);
 
   useEffect(() => {
@@ -203,9 +205,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
     setErrors(errs);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mark all fields as touched
     const allTouched: Record<string, boolean> = { email: true, password: true };
     if (mode === "signup") {
       allTouched.name = true;
@@ -213,21 +214,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
       allTouched.businessType = true;
     }
     setTouched(allTouched);
+    setFormError(null);
 
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { signupAccount, signinAccount } = await import("@/lib/api");
+      const { authStore } = await import("@/lib/authStore");
+      const result =
+        mode === "signup"
+          ? await signupAccount({
+              email: email.trim(),
+              password,
+              full_name: name.trim(),
+              organization: company.trim(),
+              business_type: businessType || undefined,
+            })
+          : await signinAccount({ email: email.trim(), password });
+      authStore.setSession(result.access_token, result.user);
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
         onClose();
         router.push("/dashboard");
-      }, 1200);
-    }, 700);
+      }, 800);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDemoFill = () => {
@@ -248,22 +266,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl border border-slate-200 p-7 relative overflow-y-auto max-h-[90vh]">
+      <div className="w-full max-w-md rounded-3xl bg-[var(--app-surface)] shadow-2xl border border-[var(--app-border)] p-7 relative overflow-y-auto max-h-[90vh]">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1 text-slate-400 hover:text-slate-700 rounded-full cursor-pointer"
+          className="absolute top-5 right-5 p-1 text-[var(--app-faint)] hover:text-[var(--app-ink)] rounded-full cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="mb-5">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white font-extrabold text-xs mb-3">
-            KPM
-          </div>
-          <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">
+          <KpmLogoImage className="mb-3 h-8 w-auto" />
+          <h3 className="text-xl font-extrabold text-[var(--app-ink)] tracking-tight">
             {mode === "signup" ? "Create your KPM account" : "Welcome back to KPM"}
           </h3>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-[var(--app-muted)] mt-1">
             {mode === "signup"
               ? "Start your 14-day free trial. No credit card required."
               : "Access your real-time inventory and financial dashboard."}
@@ -273,49 +289,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
         {success ? (
           <div className="py-10 text-center space-y-2">
             <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto animate-bounce" />
-            <div className="text-base font-bold text-slate-900">
+            <div className="text-base font-bold text-[var(--app-ink)]">
               {mode === "signup" ? "Account Initialized!" : "Authenticated Successfully!"}
             </div>
-            <p className="text-xs text-slate-500">Redirecting to your workspace...</p>
+            <p className="text-xs text-[var(--app-muted)]">Redirecting to your workspace...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} noValidate className="space-y-3.5 text-xs">
-            {/* Google OAuth Button */}
-            <button
-              type="button"
-              onClick={() => {
+            <GoogleSignInButton
+              disabled={loading}
+              onCredential={async (idToken) => {
+                setFormError(null);
                 setLoading(true);
-                setTimeout(() => {
-                  setLoading(false);
+                try {
+                  const { googleAuth } = await import("@/lib/api");
+                  const { authStore } = await import("@/lib/authStore");
+                  const result = await googleAuth(idToken);
+                  authStore.setSession(result.access_token, result.user);
                   setSuccess(true);
-                  setTimeout(() => { setSuccess(false); onClose(); router.push("/dashboard"); }, 1200);
-                }, 800);
+                  setTimeout(() => {
+                    setSuccess(false);
+                    onClose();
+                    router.push("/dashboard");
+                  }, 800);
+                } catch (err) {
+                  setFormError(err instanceof Error ? err.message : "Google sign-in failed");
+                } finally {
+                  setLoading(false);
+                }
               }}
-              className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-full border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-sm transition-colors cursor-pointer"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Continue with Google
-            </button>
+              onError={(message) => setFormError(message)}
+            />
+
+            {formError && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
 
             <div className="relative flex items-center gap-3">
               <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[11px] font-medium text-slate-400 flex-shrink-0">or continue with email</span>
+              <span className="text-[11px] font-medium text-[var(--app-faint)] flex-shrink-0">or continue with email</span>
               <div className="flex-1 h-px bg-slate-200" />
             </div>
 
             {/* Full Name — signup only */}
             {mode === "signup" && (
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">
+                <label className="block font-semibold text-[var(--app-ink)] mb-1.5">
                   Full Name <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <User className="w-4 h-4 text-[var(--app-faint)] absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     required
@@ -323,10 +349,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                     value={name}
                     onChange={(e) => { setName(e.target.value); if (touched.name) setErrors(validate()); }}
                     onBlur={() => handleBlur("name")}
-                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-slate-900 placeholder-slate-400 focus:outline-none transition-colors ${
+                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-[var(--app-ink)] placeholder-slate-400 focus:outline-none transition-colors ${
                       showError("name")
                         ? "border-rose-400 bg-rose-50/40 focus:border-rose-500"
-                        : "border-slate-200 focus:border-slate-800"
+                        : "border-[var(--app-border)] focus:border-slate-800"
                     }`}
                   />
                 </div>
@@ -340,11 +366,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
 
             {/* Business Email */}
             <div>
-              <label className="block font-semibold text-slate-700 mb-1.5">
+              <label className="block font-semibold text-[var(--app-ink)] mb-1.5">
                 Business Email <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-[var(--app-faint)] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
@@ -352,10 +378,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); if (touched.email) setErrors(validate()); }}
                   onBlur={() => handleBlur("email")}
-                  className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-slate-900 placeholder-slate-400 focus:outline-none transition-colors ${
+                  className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-[var(--app-ink)] placeholder-slate-400 focus:outline-none transition-colors ${
                     showError("email")
                       ? "border-rose-400 bg-rose-50/40 focus:border-rose-500"
-                      : "border-slate-200 focus:border-slate-800"
+                      : "border-[var(--app-border)] focus:border-slate-800"
                   }`}
                 />
               </div>
@@ -368,11 +394,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
 
             {/* Password with show/hide toggle */}
             <div>
-              <label className="block font-semibold text-slate-700 mb-1.5">
+              <label className="block font-semibold text-[var(--app-ink)] mb-1.5">
                 Password <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-[var(--app-faint)] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
@@ -380,16 +406,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if (touched.password) setErrors(validate()); }}
                   onBlur={() => handleBlur("password")}
-                  className={`w-full pl-9 pr-10 py-2.5 rounded-xl border text-slate-900 placeholder-slate-400 focus:outline-none transition-colors ${
+                  className={`w-full pl-9 pr-10 py-2.5 rounded-xl border text-[var(--app-ink)] placeholder-slate-400 focus:outline-none transition-colors ${
                     showError("password")
                       ? "border-rose-400 bg-rose-50/40 focus:border-rose-500"
-                      : "border-slate-200 focus:border-slate-800"
+                      : "border-[var(--app-border)] focus:border-slate-800"
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--app-faint)] hover:text-[var(--app-ink)] cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -412,7 +438,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                       }`}
                     />
                   ))}
-                  <span className="text-[10px] text-slate-400 ml-1">
+                  <span className="text-[10px] text-[var(--app-faint)] ml-1">
                     {password.length >= 12 ? "Strong" : password.length >= 8 ? "Good" : "Weak"}
                   </span>
                 </div>
@@ -423,11 +449,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
             {mode === "signup" && (
               <>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">
+                  <label className="block font-semibold text-[var(--app-ink)] mb-1.5">
                     Company / Business Name <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Building className="w-4 h-4 text-[var(--app-faint)] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       required
@@ -435,10 +461,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                       value={company}
                       onChange={(e) => { setCompany(e.target.value); if (touched.company) setErrors(validate()); }}
                       onBlur={() => handleBlur("company")}
-                      className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-slate-900 placeholder-slate-400 focus:outline-none transition-colors ${
+                      className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-[var(--app-ink)] placeholder-slate-400 focus:outline-none transition-colors ${
                         showError("company")
                           ? "border-rose-400 bg-rose-50/40 focus:border-rose-500"
-                          : "border-slate-200 focus:border-slate-800"
+                          : "border-[var(--app-border)] focus:border-slate-800"
                       }`}
                     />
                   </div>
@@ -450,17 +476,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">
+                  <label className="block font-semibold text-[var(--app-ink)] mb-1.5">
                     Business Type <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={businessType}
                     onChange={(e) => { setBusinessType(e.target.value); if (touched.businessType) setErrors(validate()); }}
                     onBlur={() => handleBlur("businessType")}
-                    className={`w-full px-3 py-2.5 rounded-xl border text-slate-900 focus:outline-none transition-colors ${
+                    className={`w-full px-3 py-2.5 rounded-xl border text-[var(--app-ink)] focus:outline-none transition-colors ${
                       showError("businessType")
                         ? "border-rose-400 bg-rose-50/40 focus:border-rose-500"
-                        : businessType ? "border-slate-200 focus:border-slate-800" : "border-slate-200 text-slate-400 focus:border-slate-800"
+                        : businessType ? "border-[var(--app-border)] focus:border-slate-800" : "border-[var(--app-border)] text-[var(--app-faint)] focus:border-slate-800"
                     }`}
                   >
                     <option value="" disabled>Select business type...</option>
@@ -483,7 +509,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
             {/* Forgot password — login only */}
             {mode === "login" && (
               <div className="flex justify-end -mt-1">
-                <button type="button" className="text-[11px] text-slate-500 hover:text-slate-800 font-medium cursor-pointer">
+                <button type="button" className="text-[11px] text-[var(--app-muted)] hover:text-[var(--app-ink)] font-medium cursor-pointer">
                   Forgot password?
                 </button>
               </div>
@@ -514,30 +540,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
             <button
               type="button"
               onClick={handleDemoFill}
-              className="w-full py-2 rounded-full border border-slate-200 hover:bg-slate-50 text-slate-600 font-medium text-xs transition-colors cursor-pointer"
+              className="w-full py-2 rounded-full border border-[var(--app-border)] hover:bg-[var(--app-hover)] text-[var(--app-muted)] font-medium text-xs transition-colors cursor-pointer"
             >
               ⚡ Fill with Demo Credentials
             </button>
 
             {/* Terms – signup only */}
             {mode === "signup" && (
-              <p className="text-[10.5px] text-slate-400 text-center leading-relaxed">
+              <p className="text-[10.5px] text-[var(--app-faint)] text-center leading-relaxed">
                 By creating an account, you agree to our{" "}
-                <span className="underline cursor-pointer hover:text-slate-700">Terms of Service</span>{" "}
+                <span className="underline cursor-pointer hover:text-[var(--app-ink)]">Terms of Service</span>{" "}
                 and{" "}
-                <span className="underline cursor-pointer hover:text-slate-700">Privacy Policy</span>.
+                <span className="underline cursor-pointer hover:text-[var(--app-ink)]">Privacy Policy</span>.
               </p>
             )}
           </form>
         )}
 
-        <div className="mt-5 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
+        <div className="mt-5 pt-4 border-t border-[var(--app-border)] text-center text-xs text-[var(--app-muted)]">
           {mode === "signup" ? (
             <span>
               Already have an account?{" "}
               <button
                 onClick={() => onSwitchMode("login")}
-                className="font-bold text-slate-900 hover:underline cursor-pointer"
+                className="font-bold text-[var(--app-ink)] hover:underline cursor-pointer"
               >
                 Log in
               </button>
@@ -547,7 +573,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, mode, onClose, onS
               Don&apos;t have an account?{" "}
               <button
                 onClick={() => onSwitchMode("signup")}
-                className="font-bold text-slate-900 hover:underline cursor-pointer"
+                className="font-bold text-[var(--app-ink)] hover:underline cursor-pointer"
               >
                 Start free trial
               </button>
@@ -589,22 +615,22 @@ export const DemoVideoModal: React.FC<DemoVideoModalProps> = ({ isOpen, onClose 
             <span className="w-3 h-3 rounded-full bg-rose-500" />
             <span className="text-sm font-bold text-slate-200">KPM Product Tour: AI-Powered Autonomous Ops</span>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer">
+          <button onClick={onClose} className="p-1 rounded-lg text-[var(--app-faint)] hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Video / Interactive Player Simulation */}
         <div className="relative aspect-video bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-white text-slate-950 flex items-center justify-center shadow-2xl cursor-pointer hover:scale-110 transition-transform mb-4">
+          <div className="w-16 h-16 rounded-full bg-[var(--app-surface)] text-slate-950 flex items-center justify-center shadow-2xl cursor-pointer hover:scale-110 transition-transform mb-4">
             <Play className="w-6 h-6 fill-slate-950 text-slate-950 ml-1" />
           </div>
           <h4 className="text-lg font-bold text-white">Automated Reconciliation & Multi-Warehouse Sync</h4>
-          <p className="text-xs text-slate-400 max-w-md mt-1">
+          <p className="text-xs text-[var(--app-faint)] max-w-md mt-1">
             See how KPM detects invoice anomalies, triggers supplier auto-reorders, and settles double-entry ledgers in seconds.
           </p>
 
-          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-800/80 pt-3">
+          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-[11px] text-[var(--app-faint)] border-t border-slate-800/80 pt-3">
             <span>Chapter 1: Live Stock Tracking</span>
             <span>Chapter 2: Ledger Auto-Reconcile</span>
             <span>Chapter 3: Anomaly Safeguards</span>
@@ -672,10 +698,10 @@ export const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose }) => {
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl border border-slate-200 p-6 relative">
+      <div className="w-full max-w-md rounded-3xl bg-[var(--app-surface)] shadow-2xl border border-[var(--app-border)] p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+          className="absolute top-5 right-5 p-1 text-[var(--app-faint)] hover:text-[var(--app-ink)] cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -685,35 +711,35 @@ export const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose }) => {
             <Package className="w-5 h-5 text-amber-600" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900">Auto-Reorder System</h3>
-            <p className="text-xs text-slate-500">Stock below safety threshold (15 units remaining)</p>
+            <h3 className="text-base font-bold text-[var(--app-ink)]">Auto-Reorder System</h3>
+            <p className="text-xs text-[var(--app-muted)]">Stock below safety threshold (15 units remaining)</p>
           </div>
         </div>
 
         {ordered ? (
           <div className="py-8 text-center space-y-2">
             <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-            <div className="text-sm font-bold text-slate-900">Purchase Order Dispatched!</div>
-            <p className="text-xs text-slate-500">EDI 850 sent to {supplier}. Stock will arrive in 2 business days.</p>
+            <div className="text-sm font-bold text-[var(--app-ink)]">Purchase Order Dispatched!</div>
+            <p className="text-xs text-[var(--app-muted)]">EDI 850 sent to {supplier}. Stock will arrive in 2 business days.</p>
           </div>
         ) : (
           <form onSubmit={handleOrderSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Item SKU</label>
+              <label className="block font-semibold text-[var(--app-ink)] mb-1">Item SKU</label>
               <input
                 type="text"
                 disabled
                 value="LAPTOP-PRO-M3 (High Demand)"
-                className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-mono"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)] text-[var(--app-ink)] font-mono"
               />
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Supplier Partner</label>
+              <label className="block font-semibold text-[var(--app-ink)] mb-1">Supplier Partner</label>
               <select
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-800 focus:outline-none focus:border-slate-800"
+                className="w-full px-3 py-2 rounded-xl border border-[var(--app-border)] text-[var(--app-ink)] focus:outline-none focus:border-slate-800"
               >
                 <option value="Acme Logistics Ltd.">Acme Logistics Ltd. (Tier 1 Preferred)</option>
                 <option value="Global Tech Hardware Inc.">Global Tech Hardware Inc.</option>
@@ -722,7 +748,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Order Quantity (Units)</label>
+              <label className="block font-semibold text-[var(--app-ink)] mb-1">Order Quantity (Units)</label>
               <input
                 type="number"
                 min="10"
@@ -733,8 +759,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose }) => {
                   setQuantity(Number(e.target.value));
                   setQtyError("");
                 }}
-                className={`w-full px-3 py-2 rounded-xl border text-slate-900 focus:outline-none transition-colors ${
-                  qtyError ? "border-rose-400 bg-rose-50/30" : "border-slate-200 focus:border-slate-800"
+                className={`w-full px-3 py-2 rounded-xl border text-[var(--app-ink)] focus:outline-none transition-colors ${
+                  qtyError ? "border-rose-400 bg-rose-50/30" : "border-[var(--app-border)] focus:border-slate-800"
                 }`}
               />
               {qtyError && (
@@ -752,7 +778,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-[var(--app-border)] text-[var(--app-muted)] hover:bg-[var(--app-hover)] cursor-pointer"
               >
                 Cancel
               </button>
@@ -795,21 +821,21 @@ export const ForecastModal: React.FC<ForecastModalProps> = ({ isOpen, onClose })
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 p-6 relative">
+      <div className="w-full max-w-lg rounded-3xl bg-[var(--app-surface)] shadow-2xl border border-[var(--app-border)] p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+          className="absolute top-5 right-5 p-1 text-[var(--app-faint)] hover:text-[var(--app-ink)] cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="flex items-center space-x-3 mb-4">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-indigo-600" />
+          <div className="w-10 h-10 rounded-2xl bg-[var(--app-hover)] border border-[var(--app-border)] flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-[var(--app-ink)]" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900">AI Demand Forecast Report</h3>
-            <p className="text-xs text-slate-500">Machine learning projection for Q3 / Next 30 Days</p>
+            <h3 className="text-base font-bold text-[var(--app-ink)]">Demand forecast report</h3>
+            <p className="text-xs text-[var(--app-muted)]">Projection for the next 30 days</p>
           </div>
         </div>
 
@@ -820,22 +846,22 @@ export const ForecastModal: React.FC<ForecastModalProps> = ({ isOpen, onClose })
               <div className="text-xl font-extrabold text-indigo-700 mt-0.5">+26.4%</div>
             </div>
             <div className="text-right">
-              <div className="text-[11px] text-slate-500">Confidence Score</div>
+              <div className="text-[11px] text-[var(--app-muted)]">Confidence Score</div>
               <div className="text-sm font-bold text-emerald-600">98.2% Accuracy</div>
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="font-semibold text-slate-800">Key AI Drivers:</div>
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start space-x-2">
+            <div className="font-semibold text-[var(--app-ink)]">Key AI Drivers:</div>
+            <div className="p-2.5 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)] flex items-start space-x-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 mt-1 flex-shrink-0" />
-              <span className="text-slate-600">
+              <span className="text-[var(--app-muted)]">
                 Back-to-school enterprise procurement contracts starting in 14 days.
               </span>
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start space-x-2">
+            <div className="p-2.5 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)] flex items-start space-x-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0" />
-              <span className="text-slate-600">
+              <span className="text-[var(--app-muted)]">
                 Supplier lead time for lithium batteries increased from 3 days to 7 days.
               </span>
             </div>

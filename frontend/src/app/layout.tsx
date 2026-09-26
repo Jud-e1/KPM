@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: "--font-plus-jakarta",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -14,17 +16,32 @@ export const metadata: Metadata = {
     "KPM automates your inventory, reconciles your accounts, catches errors, and runs 24/7 with AI — so you can focus on growing your business.",
 };
 
+const themeBootScript = `
+(function(){
+  try {
+    localStorage.setItem('kpm_theme', 'light');
+    var root = document.documentElement;
+    root.classList.remove('dark');
+    root.dataset.theme = 'light';
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className={`${inter.variable} scroll-smooth`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body
-        className={`${plusJakartaSans.variable} font-sans antialiased bg-[#F8FAFC] text-[#0F172A] selection:bg-[#0F172A] selection:text-white`}
+        className={`${inter.className} font-sans antialiased bg-[var(--app-canvas)] text-[var(--app-ink)]`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
+        <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async />
       </body>
     </html>
   );

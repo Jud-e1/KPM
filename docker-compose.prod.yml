@@ -7,8 +7,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: kpm_db
-    ports:
-      - "5432:5432"
+    # No host port publish — avoids clashes with local Windows PostgreSQL.
+    # Services reach Postgres on the Docker network as postgres:5432.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,17 +29,62 @@ services:
       API_V1_STR: /api/v1
       ENVIRONMENT: production
       DEBUG: "false"
+      SECRET_KEY: kpm-prod-change-this-secret-key-please
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:?ML_SERVICE_TOKEN is required}
       POSTGRES_SERVER: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: kpm_db
+      REDIS_URL: redis://redis:6379/0
       BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: kpm_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 8
+
+  ml-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ml-service
+    container_name: kpm_ml_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      CORE_API_BASE: http://backend:8000/api/v1
+      ML_SERVICE_TOKEN: ${ML_SERVICE_TOKEN:?ML_SERVICE_TOKEN is required}
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kpm_db
+      POLL_INTERVAL_SEC: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
 
   frontend:
     build:
@@ -48,10 +93,12 @@ services:
       target: frontend
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: kpm_frontend
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -59,3 +106,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

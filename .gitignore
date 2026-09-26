@@ -51,9 +51,18 @@ yarn-error.log*
 *.swp
 *.swo
 
+# Local databases
+*.db
+
 # Docker volumes / local data
 postgres_data/
 pgdata/
 
+# CDK
+infra/node_modules/
+infra/cdk.out/
+
 # Vercel
 .vercel
+
+.superdesign/tmp/

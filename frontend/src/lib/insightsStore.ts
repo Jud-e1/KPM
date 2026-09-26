@@ -1,3 +1,11 @@
+/** Empty-first insights store — reports and chat from real usage only. */
+
+import {
+  readScopedJson,
+  removeScopedJson,
+  writeScopedJson,
+} from "@/lib/storePersistence";
+
 export type InsightTone = "demand" | "warning" | "fraud" | "success" | "info";
 
 export interface InsightItem {
@@ -43,21 +51,15 @@ export interface InsightsState {
   lastSync: string;
 }
 
-const STORAGE_KEY = "kpm_insights_state_v1";
+const STORAGE_KEY = "kpm_insights_state_v2";
 const SYNC_CHANNEL_NAME = "kpm_insights_sync_channel";
 
-const DEFAULT_REPORTS: AiReport[] = [
-  { id: "rpt-1", title: "Sales Performance Summary", period: "Apr 1 – Apr 30, 2025", generatedAt: "Apr 30, 2025", format: "PDF" },
-  { id: "rpt-2", title: "Inventory Health Report", period: "Apr 1 – Apr 30, 2025", generatedAt: "Apr 29, 2025", format: "PDF" },
-  { id: "rpt-3", title: "Profit & Loss Analysis", period: "Apr 1 – Apr 30, 2025", generatedAt: "Apr 28, 2025", format: "CSV" },
-  { id: "rpt-4", title: "Supplier Performance Review", period: "Apr 1 – Apr 30, 2025", generatedAt: "Apr 27, 2025", format: "PDF" },
-];
-
 function defaultGreeting(firstName: string): AiChatMessage {
+  const name = firstName.trim() || "there";
   return {
     id: "msg-welcome",
     role: "assistant",
-    content: `Hi ${firstName}! I'm your AI assistant. Ask me about sales, inventory, or finances.`,
+    content: `Hi ${name}! I'm your AI assistant. Ask me about sales, inventory, or finances.`,
     timestamp: Date.now(),
   };
 }
@@ -81,38 +83,44 @@ class InsightsStore {
         };
       } catch {}
       window.addEventListener("storage", (event) => {
-        if (event.key === STORAGE_KEY && event.newValue) {
-          try {
-            this.state = JSON.parse(event.newValue);
-            this.notify(false);
-          } catch {}
-        }
+        if (!event.key?.startsWith(`${STORAGE_KEY}:`) || !event.newValue) return;
+        if (this.ownerId && event.key !== `${STORAGE_KEY}:${this.ownerId}`) return;
+        try {
+          this.state = JSON.parse(event.newValue);
+          this.notify(false);
+        } catch {}
       });
     }
   }
 
+  private ownerId: string | null = null;
+
+  public bindOwner(userId: string) {
+    if (this.ownerId === userId) return;
+    this.ownerId = userId;
+    this.state = this.loadStateFor(userId);
+    this.notify();
+  }
+
   private loadState(): InsightsState {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as InsightsState;
-          if (parsed.messages?.length) {
-            return {
-              ...parsed,
-              reports: parsed.reports?.length ? parsed.reports : DEFAULT_REPORTS,
-              lastSync: parsed.lastSync || new Date().toISOString(),
-            };
-          }
-        }
-      } catch {}
-    }
     return {
-      messages: [defaultGreeting("Jude")],
-      reports: DEFAULT_REPORTS,
+      messages: [defaultGreeting("there")],
+      reports: [],
       lastQuery: "",
       lastSync: new Date().toISOString(),
     };
+  }
+
+  private loadStateFor(userId: string): InsightsState {
+    const parsed = readScopedJson<InsightsState>(STORAGE_KEY, userId);
+    if (parsed && Array.isArray(parsed.messages)) {
+      return {
+        ...parsed,
+        reports: Array.isArray(parsed.reports) ? parsed.reports : [],
+        lastSync: parsed.lastSync || new Date().toISOString(),
+      };
+    }
+    return this.loadState();
   }
 
   private notify(broadcast = true) {
@@ -122,9 +130,7 @@ class InsightsStore {
         this.broadcastChannel?.postMessage({ type: "INSIGHTS_UPDATE", state: this.state });
         if (this.persistTimer !== null) window.clearTimeout(this.persistTimer);
         this.persistTimer = window.setTimeout(() => {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
-          } catch {}
+          writeScopedJson(STORAGE_KEY, this.ownerId, this.state);
         }, 120);
       } catch {}
     }
@@ -154,7 +160,7 @@ class InsightsStore {
       });
       return;
     }
-    const nextContent = `Hi ${firstName}! I'm your AI assistant. Ask me about sales, inventory, or finances.`;
+    const nextContent = defaultGreeting(firstName).content;
     if (welcome.content === nextContent) return;
     this.commit({
       ...this.state,
@@ -169,7 +175,12 @@ class InsightsStore {
     if (!trimmed) return;
     const now = Date.now();
     const userMessage: AiChatMessage = { id: `user-${now}`, role: "user", content: trimmed, timestamp: now };
-    const assistantMessage: AiChatMessage = { id: `assistant-${now + 1}`, role: "assistant", content: answer, timestamp: now + 1 };
+    const assistantMessage: AiChatMessage = {
+      id: `assistant-${now + 1}`,
+      role: "assistant",
+      content: answer,
+      timestamp: now + 1,
+    };
     this.commit({
       ...this.state,
       lastQuery: trimmed,
@@ -183,32 +194,80 @@ class InsightsStore {
     const body = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","));
     return [header.join(","), meta.map((cell) => `"${cell}"`).join(","), "", ...body].join("\n");
   }
+
+  public resetToDefault() {
+    removeScopedJson(STORAGE_KEY, this.ownerId);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
+    this.ownerId = null;
+    this.state = {
+      messages: [defaultGreeting("there")],
+      reports: [],
+      lastQuery: "",
+      lastSync: new Date().toISOString(),
+    };
+    this.notify();
+  }
 }
 
 export const insightsStore = new InsightsStore();
 
+/** Build a daily series from dated revenue points; empty when under 2 days of history. */
+export function buildForecastSeriesFromDaily(
+  dailyRevenue: Array<{ dayKey: string; label: string; amount: number }>
+): ForecastPoint[] {
+  if (dailyRevenue.length < 2) return [];
+  const sorted = [...dailyRevenue].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
+  const values = sorted.map((d) => d.amount);
+  const avg = values.reduce((s, v) => s + v, 0) / values.length;
+  return sorted.map((d, index) => {
+    const trail = values.slice(Math.max(0, index - 2), index + 1);
+    const localAvg = trail.reduce((s, v) => s + v, 0) / trail.length;
+    return {
+      label: d.label,
+      day: index + 1,
+      actual: d.amount,
+      predicted: Number((localAvg * 0.7 + avg * 0.3).toFixed(0)),
+    };
+  });
+}
+
+/** @deprecated Prefer buildForecastSeriesFromDaily with real order dates */
 export function buildForecastSeries(totalRevenue: number): ForecastPoint[] {
-  const base = Math.max(1200, totalRevenue / 30);
+  if (totalRevenue <= 0) return [];
+  const base = totalRevenue / 30;
   const points: ForecastPoint[] = [];
-  for (let day = 1; day <= 30; day += 1) {
-    const wave = Math.sin(day / 4.2) * 0.18 + Math.cos(day / 7.5) * 0.08;
-    const actual = day <= 27 ? Number((base * (0.82 + wave + day / 180)).toFixed(0)) : null;
-    const predicted = Number((base * (0.9 + wave + day / 150)).toFixed(0));
+  for (let day = 1; day <= 14; day += 1) {
     points.push({
-      label: `Apr ${day}`,
+      label: `Day ${day}`,
       day,
-      actual,
-      predicted,
+      actual: Number((base * (0.85 + day / 100)).toFixed(0)),
+      predicted: Number((base * (0.9 + day / 90)).toFixed(0)),
     });
   }
   return points;
 }
 
+export function buildStockMovementFromProducts(
+  products: Array<{ stock: number; lowStockThreshold?: number }>
+): StockMovementPoint[] {
+  if (!products.length) return [];
+  const low = products.filter((p) => p.lowStockThreshold != null && p.stock <= (p.lowStockThreshold || 0)).length;
+  const healthy = products.length - low;
+  return [
+    { label: "Healthy stock", inflow: healthy, outflow: 0 },
+    { label: "Low / watch", inflow: 0, outflow: low },
+  ];
+}
+
+/** @deprecated Prefer buildStockMovementFromProducts */
 export function buildStockMovement(lowStockCount: number, totalProducts: number): StockMovementPoint[] {
-  const labels = ["Apr 1", "Apr 5", "Apr 10", "Apr 15", "Apr 20", "Apr 25", "Apr 28"];
-  return labels.map((label, index) => {
-    const inflow = 18 + ((index * 7 + lowStockCount) % 22);
-    const outflow = 12 + ((index * 5 + totalProducts) % 20);
-    return { label, inflow, outflow };
-  });
+  if (totalProducts <= 0) return [];
+  return [
+    { label: "In range", inflow: Math.max(0, totalProducts - lowStockCount), outflow: 0 },
+    { label: "Low stock", inflow: 0, outflow: lowStockCount },
+  ];
 }

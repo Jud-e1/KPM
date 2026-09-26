@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Boxes,
   FileText,
-  Sparkles,
+  LineChart,
   Link2,
   Lock,
   Mail,
@@ -22,12 +22,19 @@ import {
   Check,
   Package
 } from "lucide-react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { KpmLogoImage } from "@/components/ui/Logo";
 
 export default function SignupPage() {
   const router = useRouter();
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    const preset = new URLSearchParams(window.location.search).get("email");
+    if (preset) setEmail(preset);
+  }, []);
   const [password, setPassword] = useState("");
   const [businessType, setBusinessType] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -48,7 +55,7 @@ export default function SignupPage() {
     "Other B2B Enterprise",
   ];
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -68,34 +75,50 @@ export default function SignupPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      setErrorMsg("Password must be at least 8 characters.");
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { signupAccount, signinAccount } = await import("@/lib/api");
+      const { authStore } = await import("@/lib/authStore");
+      const result =
+        authMode === "signup"
+          ? await signupAccount({
+              email: email.trim(),
+              password,
+              full_name: fullName.trim(),
+              organization: fullName.trim(),
+              business_type: businessType,
+            })
+          : await signinAccount({ email: email.trim(), password });
+      authStore.setSession(result.access_token, result.user);
       setSubmitted(true);
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1000);
-    }, 600);
+      setTimeout(() => router.push("/dashboard"), 700);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleAuth = () => {
+  const handleGoogleAuth = async (idToken: string) => {
+    setErrorMsg(null);
     setLoading(true);
-    setTimeout(() => {
-      setFullName("Alex Johnson");
-      setEmail("alex.johnson@business.com");
-      setPassword("password123");
-      setBusinessType("Wholesale & Distribution");
-      setLoading(false);
+    try {
+      const { googleAuth } = await import("@/lib/api");
+      const { authStore } = await import("@/lib/authStore");
+      const result = await googleAuth(idToken);
+      authStore.setSession(result.access_token, result.user);
       setSubmitted(true);
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 900);
-    }, 500);
+      setTimeout(() => router.push("/dashboard"), 600);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const avatars = [
@@ -106,45 +129,28 @@ export default function SignupPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#ECEFF2] py-4 sm:py-8 px-2 sm:px-6 lg:px-10 flex items-center justify-center font-sans antialiased text-[#0F172A]">
+    <div className="min-h-screen bg-[#ECEFF2] py-4 sm:py-8 px-2 sm:px-6 lg:px-10 flex items-center justify-center font-sans antialiased text-[var(--app-ink)]">
       {/* Outer Giant Rounded Card Frame matching the screenshot */}
-      <div className="w-full max-w-[1440px] bg-white rounded-[28px] sm:rounded-[36px] shadow-[0_20px_70px_-15px_rgba(15,23,42,0.08)] border border-slate-200/80 overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[780px]">
+      <div className="w-full max-w-[1440px] bg-[var(--app-surface)] rounded-[28px] sm:rounded-[36px] shadow-[0_20px_70px_-15px_rgba(15,23,42,0.08)] border border-[var(--app-border)]/80 overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[780px]">
         
         {/* ========================================================= */}
         {/* LEFT COLUMN: Visual Branding, Features & Dashboard Collage */}
         {/* ========================================================= */}
-        <div className="lg:col-span-7 p-6 sm:p-10 lg:p-12 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 bg-[#FFFFFF] relative overflow-hidden">
+        <div className="lg:col-span-7 p-6 sm:p-10 lg:p-12 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-[var(--app-border)] bg-[#FFFFFF] relative overflow-hidden">
           
           {/* Top Bar inside Left Section */}
           <div className="flex items-center justify-between pb-6">
             {/* KPM Logo with subtitle */}
-            <Link href="/" className="flex items-center space-x-3 group">
-              <div className="flex items-center space-x-2">
-                <svg
-                  width="32"
-                  height="30"
-                  viewBox="0 0 32 30"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="transform group-hover:scale-105 transition-transform"
-                >
-                  <path d="M4 3H10V27H4V3Z" fill="#0F172A" />
-                  <path d="M11 15L22 3H29L17 16L29 27H22L11 15Z" fill="#0F172A" />
-                </svg>
-                <div>
-                  <span className="font-extrabold text-2xl tracking-tight text-[#0F172A] block leading-none">
-                    KPM
-                  </span>
-                  <span className="text-[10px] font-medium text-slate-400 tracking-tight block mt-0.5">
-                    Inventory • Accounting • Growth
-                  </span>
-                </div>
-              </div>
+            <Link href="/" className="group">
+              <KpmLogoImage className="h-9 w-auto" />
+              <span className="mt-1 block text-[10px] font-medium text-[var(--app-faint)] tracking-tight">
+                Inventory • Accounting • Growth
+              </span>
             </Link>
 
             {/* Already have an account? Sign In CTA */}
             <div className="flex items-center space-x-2 text-xs sm:text-[13px]">
-              <span className="text-slate-500 hidden sm:inline">
+              <span className="text-[var(--app-muted)] hidden sm:inline">
                 {authMode === "signup" ? "Already have an account?" : "Need an account?"}
               </span>
               <button
@@ -152,10 +158,10 @@ export default function SignupPage() {
                   setAuthMode(authMode === "signup" ? "signin" : "signup");
                   setErrorMsg(null);
                 }}
-                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-hover)] text-[var(--app-ink)] text-xs font-semibold shadow-2xs transition-all cursor-pointer"
               >
                 <span>{authMode === "signup" ? "Sign In" : "Sign Up"}</span>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
+                <ArrowRight className="w-3.5 h-3.5 text-[var(--app-muted)]" />
               </button>
             </div>
           </div>
@@ -163,56 +169,55 @@ export default function SignupPage() {
           {/* Hero Copy inside Left Section */}
           <div className="space-y-4 my-2 z-10">
             {/* Tag pill */}
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full border border-indigo-100 bg-[#EEF2FF] text-indigo-700 text-xs font-semibold shadow-2xs">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Powering Smarter Businesses</span>
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full border border-[var(--app-border)] bg-[var(--app-hover)] text-[var(--app-ink)] text-xs font-semibold">
+              <span>Built for B2B operations</span>
             </div>
 
             {/* Headline */}
-            <h1 className="text-[34px] sm:text-[42px] lg:text-[46px] font-extrabold text-[#0F172A] tracking-tight leading-[1.1]">
+            <h1 className="text-[34px] sm:text-[42px] lg:text-[46px] font-extrabold text-[var(--app-ink)] tracking-tight leading-[1.1]">
               Automate Your Inventory <br />
               and Accounting
             </h1>
 
             {/* Subparagraph */}
-            <p className="text-slate-600 text-[14px] sm:text-[15px] leading-relaxed max-w-lg font-normal">
+            <p className="text-[var(--app-muted)] text-[14px] sm:text-[15px] leading-relaxed max-w-lg font-normal">
               KPM gives B2B businesses the power to track stock, reconcile accounts, and catch errors — all with AI. Work smarter, not harder.
             </p>
 
             {/* 4 Feature Badges Row matching the screenshot */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <div className="flex items-center space-x-2.5 text-slate-700">
-                <div className="w-9 h-9 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex items-center justify-center flex-shrink-0 text-slate-800 shadow-2xs">
+              <div className="flex items-center space-x-2.5 text-[var(--app-ink)]">
+                <div className="w-9 h-9 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)]/90 flex items-center justify-center flex-shrink-0 text-[var(--app-ink)] shadow-2xs">
                   <Boxes className="w-4 h-4 stroke-[1.8]" />
                 </div>
-                <span className="text-[11.5px] font-semibold text-slate-700 leading-tight">
+                <span className="text-[11.5px] font-semibold text-[var(--app-ink)] leading-tight">
                   Real-time <br /> Inventory Tracking
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2.5 text-slate-700">
-                <div className="w-9 h-9 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex items-center justify-center flex-shrink-0 text-slate-800 shadow-2xs">
+              <div className="flex items-center space-x-2.5 text-[var(--app-ink)]">
+                <div className="w-9 h-9 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)]/90 flex items-center justify-center flex-shrink-0 text-[var(--app-ink)] shadow-2xs">
                   <FileText className="w-4 h-4 stroke-[1.8]" />
                 </div>
-                <span className="text-[11.5px] font-semibold text-slate-700 leading-tight">
+                <span className="text-[11.5px] font-semibold text-[var(--app-ink)] leading-tight">
                   Automated <br /> Accounting
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2.5 text-slate-700">
-                <div className="w-9 h-9 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex items-center justify-center flex-shrink-0 text-slate-800 shadow-2xs">
-                  <Sparkles className="w-4 h-4 stroke-[1.8]" />
+              <div className="flex items-center space-x-2.5 text-[var(--app-ink)]">
+                <div className="w-9 h-9 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)]/90 flex items-center justify-center flex-shrink-0 text-[var(--app-ink)] shadow-2xs">
+                  <LineChart className="w-4 h-4 stroke-[1.8]" />
                 </div>
-                <span className="text-[11.5px] font-semibold text-slate-700 leading-tight">
-                  AI-Powered <br /> Insights
+                <span className="text-[11.5px] font-semibold text-[var(--app-ink)] leading-tight">
+                  Business <br /> Insights
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2.5 text-slate-700">
-                <div className="w-9 h-9 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex items-center justify-center flex-shrink-0 text-slate-800 shadow-2xs">
+              <div className="flex items-center space-x-2.5 text-[var(--app-ink)]">
+                <div className="w-9 h-9 rounded-xl bg-[var(--app-hover)] border border-[var(--app-border)]/90 flex items-center justify-center flex-shrink-0 text-[var(--app-ink)] shadow-2xs">
                   <Link2 className="w-4 h-4 stroke-[1.8]" />
                 </div>
-                <span className="text-[11.5px] font-semibold text-slate-700 leading-tight">
+                <span className="text-[11.5px] font-semibold text-[var(--app-ink)] leading-tight">
                   B2B <br /> Integration
                 </span>
               </div>
@@ -232,7 +237,7 @@ export default function SignupPage() {
             </div>
 
             {/* Right-Aligned Warehouse Background Image with Soft Curved Arch */}
-            <div className="absolute right-0 top-0 bottom-0 w-[62%] sm:w-[58%] rounded-l-[40px] overflow-hidden border-l border-t border-b border-slate-100 shadow-inner">
+            <div className="absolute right-0 top-0 bottom-0 w-[62%] sm:w-[58%] rounded-l-[40px] overflow-hidden border-l border-t border-b border-[var(--app-border)] shadow-inner">
               <img
                 src="/images/warehouse.jpg"
                 alt="Modern Warehouse with Inventory"
@@ -242,21 +247,15 @@ export default function SignupPage() {
             </div>
 
             {/* Left/Foreground Floating Dashboard Mockup Card */}
-            <div className="relative z-10 w-[88%] sm:w-[78%] bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-[0_15px_40px_-10px_rgba(15,23,42,0.15)] p-3 text-slate-900 ml-2 sm:ml-4">
+            <div className="relative z-10 w-[88%] sm:w-[78%] bg-[var(--app-surface)]/95 backdrop-blur-md rounded-2xl border border-[var(--app-border)] shadow-[0_15px_40px_-10px_rgba(15,23,42,0.15)] p-3 text-[var(--app-ink)] ml-2 sm:ml-4">
               {/* Mockup Header */}
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 text-[10px]">
-                <div className="flex items-center space-x-1.5 font-bold">
-                  <svg width="14" height="14" viewBox="0 0 32 30" fill="none">
-                    <path d="M4 3H10V27H4V3Z" fill="#0F172A" />
-                    <path d="M11 15L22 3H29L17 16L29 27H22L11 15Z" fill="#0F172A" />
-                  </svg>
-                  <span>KPM</span>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/60 rounded px-2 py-0.5 text-[9px] text-slate-400 w-36 flex items-center gap-1">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--app-border)] text-[10px]">
+                <KpmLogoImage className="h-4 w-auto" />
+                <div className="bg-[var(--app-hover)] border border-[var(--app-border)]/60 rounded px-2 py-0.5 text-[9px] text-[var(--app-faint)] w-36 flex items-center gap-1">
                   <Search className="w-2.5 h-2.5" />
                   <span>Search anything...</span>
                 </div>
-                <div className="flex items-center space-x-1.5 text-slate-400">
+                <div className="flex items-center space-x-1.5 text-[var(--app-faint)]">
                   <Lock className="w-2.5 h-2.5" />
                   <User className="w-2.5 h-2.5" />
                 </div>
@@ -265,55 +264,51 @@ export default function SignupPage() {
               {/* Mockup Content Grid */}
               <div className="grid grid-cols-12 gap-2 text-[9px]">
                 {/* Mini Sidebar */}
-                <div className="col-span-3 space-y-1 text-slate-500 font-medium pr-1 border-r border-slate-100">
-                  <div className="px-1.5 py-1 rounded bg-blue-50 text-blue-600 font-bold">Dashboard</div>
-                  <div className="px-1.5 py-0.5 hover:text-slate-800">Inventory</div>
-                  <div className="px-1.5 py-0.5 hover:text-slate-800">Accounting</div>
-                  <div className="px-1.5 py-0.5 hover:text-slate-800">Reports</div>
-                  <div className="px-1.5 py-0.5 hover:text-slate-800">Settings</div>
+                <div className="col-span-3 space-y-1 text-[var(--app-muted)] font-medium pr-1 border-r border-[var(--app-border)]">
+                  <div className="rounded bg-[var(--app-hover)] px-1.5 py-1 font-semibold text-[var(--app-ink)]">Dashboard</div>
+                  <div className="px-1.5 py-0.5 hover:text-[var(--app-ink)]">Inventory</div>
+                  <div className="px-1.5 py-0.5 hover:text-[var(--app-ink)]">Accounting</div>
+                  <div className="px-1.5 py-0.5 hover:text-[var(--app-ink)]">Reports</div>
+                  <div className="px-1.5 py-0.5 hover:text-[var(--app-ink)]">Settings</div>
                 </div>
 
                 {/* Main Mockup Column */}
                 <div className="col-span-9 space-y-2">
-                  <div className="font-bold text-[11px] text-slate-800">Dashboard</div>
+                  <div className="font-bold text-[11px] text-[var(--app-ink)]">Dashboard</div>
 
                   {/* 4 Mini Stat Boxes */}
                   <div className="grid grid-cols-4 gap-1.5 text-left">
-                    <div className="p-1 rounded bg-slate-50 border border-slate-100">
-                      <div className="text-[7.5px] text-slate-400">Total Stock Value</div>
-                      <div className="text-[10px] font-bold text-slate-900">$482,650</div>
-                      <div className="text-[7px] text-emerald-600 font-semibold">↑ 12%</div>
+                    <div className="rounded border border-[var(--app-border)] bg-[var(--app-hover)] p-1">
+                      <div className="text-[8px] text-[var(--app-faint)]">Stock value</div>
+                      <div className="text-[10px] font-semibold text-[var(--app-ink)]">—</div>
                     </div>
-                    <div className="p-1 rounded bg-slate-50 border border-slate-100">
-                      <div className="text-[7.5px] text-slate-400">Accounts Balanced</div>
-                      <div className="text-[10px] font-bold text-slate-900">100%</div>
-                      <div className="text-[7px] text-emerald-600 font-semibold">Auto-reconciled</div>
+                    <div className="rounded border border-[var(--app-border)] bg-[var(--app-hover)] p-1">
+                      <div className="text-[8px] text-[var(--app-faint)]">Books</div>
+                      <div className="text-[10px] font-semibold text-[var(--app-ink)]">—</div>
                     </div>
-                    <div className="p-1 rounded bg-slate-50 border border-slate-100">
-                      <div className="text-[7.5px] text-slate-400">Orders Processed</div>
-                      <div className="text-[10px] font-bold text-slate-900">1,248</div>
-                      <div className="text-[7px] text-emerald-600 font-semibold">↑ 8%</div>
+                    <div className="rounded border border-[var(--app-border)] bg-[var(--app-hover)] p-1">
+                      <div className="text-[8px] text-[var(--app-faint)]">Orders</div>
+                      <div className="text-[10px] font-semibold text-[var(--app-ink)]">—</div>
                     </div>
-                    <div className="p-1 rounded bg-slate-50 border border-slate-100">
-                      <div className="text-[7.5px] text-slate-400">Errors Detected</div>
-                      <div className="text-[10px] font-bold text-slate-900">3</div>
-                      <div className="text-[7px] text-emerald-600 font-semibold">Auto-resolved</div>
+                    <div className="rounded border border-[var(--app-border)] bg-[var(--app-hover)] p-1">
+                      <div className="text-[8px] text-[var(--app-faint)]">Alerts</div>
+                      <div className="text-[10px] font-semibold text-[var(--app-ink)]">—</div>
                     </div>
                   </div>
 
                   {/* Chart + AI Insights Box */}
                   <div className="grid grid-cols-12 gap-1.5">
                     {/* Stock Movement Chart */}
-                    <div className="col-span-7 p-1.5 rounded bg-slate-50/70 border border-slate-100">
-                      <div className="flex items-center justify-between text-[8px] text-slate-500 mb-1">
-                        <span className="font-bold text-slate-800">Stock Movement</span>
+                    <div className="col-span-7 p-1.5 rounded bg-[var(--app-hover)]/70 border border-[var(--app-border)]">
+                      <div className="flex items-center justify-between text-[8px] text-[var(--app-muted)] mb-1">
+                        <span className="font-bold text-[var(--app-ink)]">Stock Movement</span>
                         <div className="flex space-x-1">
                           {(["7D", "30D", "90D"] as const).map((t) => (
                             <button
                               key={t}
                               onClick={() => setTimeRange(t)}
                               className={`px-1 rounded text-[7px] font-semibold cursor-pointer ${
-                                timeRange === t ? "bg-white text-blue-600 shadow-2xs" : "text-slate-400"
+                                timeRange === t ? "bg-[var(--app-surface)] text-blue-600 shadow-2xs" : "text-[var(--app-faint)]"
                               }`}
                             >
                               {t}
@@ -347,9 +342,9 @@ export default function SignupPage() {
                     <div className="col-span-5 p-1.5 rounded bg-indigo-50/80 border border-indigo-100/80 flex flex-col justify-between text-[7.5px]">
                       <div>
                         <div className="font-bold text-indigo-900 flex items-center gap-0.5">
-                          <Sparkles className="w-2 h-2 text-indigo-600" /> AI Insights
+                          <LineChart className="w-2 h-2 text-[var(--app-muted)]" /> Insights
                         </div>
-                        <p className="text-slate-600 mt-0.5 leading-tight">
+                        <p className="text-[var(--app-muted)] mt-0.5 leading-tight">
                           Potential stock shortage detected for 3 SKUs. Consider reordering within 5 days.
                         </p>
                       </div>
@@ -362,18 +357,18 @@ export default function SignupPage() {
               </div>
 
               {/* Overlapping Floating Badge matching screenshot: Reorder Suggestion */}
-              <div className="absolute -bottom-3 -left-3 sm:-left-4 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2.5 shadow-floating-badge border border-slate-200 flex items-center space-x-2.5 max-w-[280px]">
+              <div className="absolute -bottom-3 -left-3 sm:-left-4 z-20 bg-[var(--app-surface)]/95 backdrop-blur-md rounded-xl p-2.5 shadow-floating-badge border border-[var(--app-border)] flex items-center space-x-2.5 max-w-[280px]">
                 <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 text-amber-600">
                   <Package className="w-3.5 h-3.5" />
                 </div>
                 <div className="text-left flex-1">
-                  <div className="text-[10px] font-bold text-slate-900 leading-tight">Reorder Suggestion</div>
-                  <div className="text-[8.5px] text-slate-500 leading-tight mt-0.5">
+                  <div className="text-[10px] font-bold text-[var(--app-ink)] leading-tight">Reorder Suggestion</div>
+                  <div className="text-[8.5px] text-[var(--app-muted)] leading-tight mt-0.5">
                     Product X is forecasted to run low in 5 days. Recommended quantity: 200.
                   </div>
                 </div>
-                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
-                  <ArrowRight className="w-2.5 h-2.5 text-slate-700" />
+                <div className="w-5 h-5 rounded-full bg-[var(--app-hover)] flex items-center justify-center flex-shrink-0">
+                  <ArrowRight className="w-2.5 h-2.5 text-[var(--app-ink)]" />
                 </div>
               </div>
             </div>
@@ -391,8 +386,8 @@ export default function SignupPage() {
                 />
               ))}
             </div>
-            <p className="text-xs text-slate-500">
-              Trusted by <span className="font-bold text-slate-800">10,000+</span> businesses worldwide
+            <p className="text-xs text-[var(--app-muted)]">
+              Trusted by <span className="font-bold text-[var(--app-ink)]">10,000+</span> businesses worldwide
             </p>
           </div>
         </div>
@@ -400,18 +395,18 @@ export default function SignupPage() {
         {/* ========================================================= */}
         {/* RIGHT COLUMN: The Signup & Onboarding Form               */}
         {/* ========================================================= */}
-        <div className="lg:col-span-5 p-6 sm:p-10 lg:p-12 flex flex-col justify-center bg-white">
+        <div className="lg:col-span-5 p-6 sm:p-10 lg:p-12 flex flex-col justify-center bg-[var(--app-surface)]">
           <div className="max-w-md w-full mx-auto space-y-6">
             
             {/* Form Header */}
             <div>
-              <div className="inline-block px-3 py-1 rounded-lg bg-slate-100 border border-slate-200/60 text-xs font-semibold text-slate-700 mb-3 shadow-2xs">
+              <div className="inline-block px-3 py-1 rounded-lg bg-[var(--app-hover)] border border-[var(--app-border)]/60 text-xs font-semibold text-[var(--app-ink)] mb-3 shadow-2xs">
                 {authMode === "signup" ? "Create Your Account" : "Welcome Back"}
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--app-ink)] tracking-tight">
                 {authMode === "signup" ? "Get Started with KPM" : "Sign In to KPM"}
               </h2>
-              <p className="text-xs sm:text-[13.5px] text-slate-500 mt-1.5 leading-relaxed font-normal">
+              <p className="text-xs sm:text-[13.5px] text-[var(--app-muted)] mt-1.5 leading-relaxed font-normal">
                 {authMode === "signup"
                   ? "Join thousands of businesses already automating their inventory and accounting."
                   : "Enter your credentials to access your real-time dashboard."}
@@ -420,18 +415,18 @@ export default function SignupPage() {
 
             {/* Success Submission State */}
             {submitted ? (
-              <div className="py-10 text-center space-y-3 bg-white rounded-2xl border border-emerald-100 p-6 shadow-sm animate-in zoom-in-95 duration-200">
+              <div className="py-10 text-center space-y-3 bg-[var(--app-surface)] rounded-2xl border border-emerald-100 p-6 shadow-sm animate-in zoom-in-95 duration-200">
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto animate-bounce" />
-                <h3 className="text-lg font-bold text-slate-900">
+                <h3 className="text-lg font-bold text-[var(--app-ink)]">
                   {authMode === "signup" ? "Account Created Successfully!" : "Signed In Successfully!"}
                 </h3>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                <p className="text-xs text-[var(--app-muted)] max-w-xs mx-auto">
                   Redirecting to your real-time KPM dashboard...
                 </p>
                 <div className="pt-2">
                   <Link
                     href="/dashboard"
-                    className="inline-flex items-center space-x-2 px-6 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold rounded-full shadow-md transition-all"
+                    className="inline-flex items-center space-x-2 px-6 py-2.5 bg-[var(--app-nav-active-bg)] hover:opacity-90 text-[var(--app-nav-active)] text-xs font-semibold rounded-full shadow-md transition-all"
                   >
                     <span>Open Dashboard</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -451,15 +446,15 @@ export default function SignupPage() {
                 {/* Full Name Input (Only on signup) */}
                 {authMode === "signup" && (
                   <div>
-                    <label className="block font-semibold text-[#0F172A] text-[13px] mb-1.5">Full Name</label>
+                    <label className="block font-semibold text-[var(--app-ink)] text-[13px] mb-1.5">Full Name</label>
                     <div className="relative">
-                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
+                      <User className="w-4 h-4 text-[var(--app-faint)] absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
                       <input
                         type="text"
                         placeholder="Enter your full name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        className="w-full pl-10 pr-3.5 py-3 bg-white rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
+                        className="w-full pl-10 pr-3.5 py-3 bg-[var(--app-surface)] rounded-xl border border-[var(--app-border)] text-[var(--app-ink)] placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
                       />
                     </div>
                   </div>
@@ -467,35 +462,35 @@ export default function SignupPage() {
 
                 {/* Business Email Input */}
                 <div>
-                  <label className="block font-semibold text-[#0F172A] text-[13px] mb-1.5">Business Email</label>
+                  <label className="block font-semibold text-[var(--app-ink)] text-[13px] mb-1.5">Business Email</label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
+                    <Mail className="w-4 h-4 text-[var(--app-faint)] absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
                     <input
                       type="email"
                       placeholder="you@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-3.5 py-3 bg-white rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
+                      className="w-full pl-10 pr-3.5 py-3 bg-[var(--app-surface)] rounded-xl border border-[var(--app-border)] text-[var(--app-ink)] placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
                     />
                   </div>
                 </div>
 
                 {/* Password Input with Visibility Toggle */}
                 <div>
-                  <label className="block font-semibold text-[#0F172A] text-[13px] mb-1.5">Password</label>
+                  <label className="block font-semibold text-[var(--app-ink)] text-[13px] mb-1.5">Password</label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
+                    <Lock className="w-4 h-4 text-[var(--app-faint)] absolute left-3.5 top-1/2 -translate-y-1/2 stroke-[1.8]" />
                     <input
                       type={showPassword ? "text" : "password"}
                       placeholder="Create a strong password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-3 bg-white rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
+                      className="w-full pl-10 pr-10 py-3 bg-[var(--app-surface)] rounded-xl border border-[var(--app-border)] text-[var(--app-ink)] placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all text-xs h-[48px]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--app-faint)] hover:text-[var(--app-ink)] cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -505,24 +500,24 @@ export default function SignupPage() {
                 {/* Business Type Dropdown (Only on signup) */}
                 {authMode === "signup" && (
                   <div className="relative">
-                    <label className="block font-semibold text-[#0F172A] text-[13px] mb-1.5">Business Type</label>
+                    <label className="block font-semibold text-[var(--app-ink)] text-[13px] mb-1.5">Business Type</label>
                     <button
                       type="button"
                       onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                      className="w-full pl-10 pr-3.5 py-3 bg-white rounded-xl border border-slate-200 text-left text-xs flex items-center justify-between focus:outline-none focus:border-slate-800 transition-all cursor-pointer h-[48px]"
+                      className="w-full pl-10 pr-3.5 py-3 bg-[var(--app-surface)] rounded-xl border border-[var(--app-border)] text-left text-xs flex items-center justify-between focus:outline-none focus:border-slate-800 transition-all cursor-pointer h-[48px]"
                     >
                       <div className="flex items-center space-x-2">
-                        <Building className="w-4 h-4 text-slate-400 stroke-[1.8]" />
-                        <span className={businessType ? "text-slate-900 font-medium" : "text-slate-400"}>
+                        <Building className="w-4 h-4 text-[var(--app-faint)] stroke-[1.8]" />
+                        <span className={businessType ? "text-[var(--app-ink)] font-medium" : "text-[var(--app-faint)]"}>
                           {businessType || "Select your business type"}
                         </span>
                       </div>
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
+                      <ChevronDown className="w-4 h-4 text-[var(--app-faint)]" />
                     </button>
 
                     {/* Dropdown Menu */}
                     {isDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white rounded-xl border border-slate-200 shadow-xl py-1 max-h-48 overflow-y-auto animate-in fade-in duration-150">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-[var(--app-surface)] rounded-xl border border-[var(--app-border)] shadow-xl py-1 max-h-48 overflow-y-auto animate-in fade-in duration-150">
                         {businessTypes.map((type) => (
                           <div
                             key={type}
@@ -530,7 +525,7 @@ export default function SignupPage() {
                               setBusinessType(type);
                               setIsDropdownOpen(false);
                             }}
-                            className="px-3.5 py-2.5 hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs cursor-pointer flex items-center justify-between"
+                            className="px-3.5 py-2.5 hover:bg-[var(--app-hover)] text-[var(--app-ink)] hover:text-[var(--app-ink)] text-xs cursor-pointer flex items-center justify-between"
                           >
                             <span>{type}</span>
                             {businessType === type && <Check className="w-3.5 h-3.5 text-blue-600" />}
@@ -545,7 +540,7 @@ export default function SignupPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white font-semibold text-xs sm:text-[13.5px] shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2 disabled:opacity-50 h-[48px]"
+                  className="w-full py-3.5 rounded-xl bg-[var(--app-nav-active-bg)] hover:opacity-90 text-[var(--app-nav-active)] font-semibold text-xs sm:text-[13.5px] shadow-sm transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2 disabled:opacity-50 h-[48px]"
                 >
                   <span>{loading ? "Processing..." : authMode === "signup" ? "Create Account" : "Sign In"}</span>
                   <ArrowRight className="w-4 h-4" />
@@ -553,57 +548,35 @@ export default function SignupPage() {
 
                 {/* Or Divider */}
                 <div className="relative flex items-center justify-center my-3">
-                  <div className="border-t border-slate-200 w-full" />
-                  <span className="bg-white px-3 text-[11px] text-slate-400 uppercase font-medium">
+                  <div className="border-t border-[var(--app-border)] w-full" />
+                  <span className="bg-[var(--app-surface)] px-3 text-[11px] text-[var(--app-faint)] uppercase font-medium">
                     or
                   </span>
-                  <div className="border-t border-slate-200 w-full" />
+                  <div className="border-t border-[var(--app-border)] w-full" />
                 </div>
 
-                {/* Continue with Google Button */}
-                <button
-                  type="button"
-                  onClick={handleGoogleAuth}
-                  className="w-full py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold shadow-2xs transition-all flex items-center justify-center space-x-2.5 cursor-pointer h-[48px]"
-                >
-                  {/* Official Google G SVG Icon */}
-                  <svg width="18" height="18" viewBox="0 0 48 48">
-                    <path
-                      fill="#EA4335"
-                      d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-                    />
-                    <path
-                      fill="#4285F4"
-                      d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-                    />
-                  </svg>
-                  <span>Continue with Google</span>
-                </button>
+                <GoogleSignInButton
+                  disabled={loading}
+                  onCredential={handleGoogleAuth}
+                  onError={setErrorMsg}
+                />
 
                 {/* Terms and Privacy Text */}
-                <p className="text-[10.5px] text-slate-400 text-center leading-relaxed pt-2">
+                <p className="text-[10.5px] text-[var(--app-faint)] text-center leading-relaxed pt-2">
                   By creating an account, you agree to our{" "}
-                  <a href="#" className="underline text-slate-600 hover:text-slate-900">
+                  <a href="#" className="underline text-[var(--app-muted)] hover:text-[var(--app-ink)]">
                     Terms of Service
                   </a>{" "}
                   and{" "}
-                  <a href="#" className="underline text-slate-600 hover:text-slate-900">
+                  <a href="#" className="underline text-[var(--app-muted)] hover:text-[var(--app-ink)]">
                     Privacy Policy
                   </a>
                   .
                 </p>
 
                 {/* Security Badge */}
-                <div className="flex items-center justify-center space-x-1.5 text-[11px] text-slate-500 pt-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />
+                <div className="flex items-center justify-center space-x-1.5 text-[11px] text-[var(--app-muted)] pt-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[var(--app-muted)]" />
                   <span>Your data is protected and secure</span>
                 </div>
               </form>

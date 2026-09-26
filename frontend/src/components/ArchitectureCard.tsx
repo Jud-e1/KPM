@@ -46,11 +46,11 @@ export const ArchitectureCard: React.FC = () => {
           </div>
           <div>
             <div className="font-semibold text-slate-200">Next.js 15 Client</div>
-            <div className="text-slate-500">React 19 • App Router • Port 3000</div>
+            <div className="text-[var(--app-muted)]">React 19 • App Router • Port 3000</div>
           </div>
         </div>
 
-        <ArrowRight className="w-4 h-4 text-slate-600 hidden md:block" />
+        <ArrowRight className="w-4 h-4 text-[var(--app-muted)] hidden md:block" />
 
         <div className="flex items-center space-x-3 w-full md:w-auto">
           <div className="w-9 h-9 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
@@ -58,11 +58,11 @@ export const ArchitectureCard: React.FC = () => {
           </div>
           <div>
             <div className="font-semibold text-slate-200">Python FastAPI</div>
-            <div className="text-slate-500">Async REST API • Port 8000</div>
+            <div className="text-[var(--app-muted)]">Async REST API • Port 8000</div>
           </div>
         </div>
 
-        <ArrowRight className="w-4 h-4 text-slate-600 hidden md:block" />
+        <ArrowRight className="w-4 h-4 text-[var(--app-muted)] hidden md:block" />
 
         <div className="flex items-center space-x-3 w-full md:w-auto">
           <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
@@ -70,7 +70,7 @@ export const ArchitectureCard: React.FC = () => {
           </div>
           <div>
             <div className="font-semibold text-slate-200">PostgreSQL 18</div>
-            <div className="text-slate-500">SQLAlchemy ORM • Port 5432</div>
+            <div className="text-[var(--app-muted)]">SQLAlchemy ORM • Port 5432</div>
           </div>
         </div>
       </div>
@@ -84,12 +84,12 @@ export const ArchitectureCard: React.FC = () => {
               key={idx}
               className="p-3 rounded-xl border border-slate-800 bg-slate-950/40 flex flex-col justify-between"
             >
-              <div className="text-[11px] font-medium text-slate-400 mb-1.5">{snip.title}</div>
+              <div className="text-[11px] font-medium text-[var(--app-faint)] mb-1.5">{snip.title}</div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-900 font-mono text-[11px] text-indigo-300">
                 <span className="truncate pr-2">{snip.cmd}</span>
                 <button
                   onClick={() => handleCopy(snip.cmd, idx)}
-                  className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer flex-shrink-0"
+                  className="p-1 rounded hover:bg-slate-800 text-[var(--app-faint)] hover:text-slate-200 transition-colors cursor-pointer flex-shrink-0"
                   title="Copy command"
                 >
                   {copiedIndex === idx ? (

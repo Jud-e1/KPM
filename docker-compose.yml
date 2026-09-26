@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: kpm_db
     ports:
-      - "5432:5432"
+      # 5433 avoids clashing with a local Windows PostgreSQL install on 5432
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,7 +18,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # Optional pgAdmin database web management interface
+  redis:
+    image: redis:7-alpine
+    container_name: kpm_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: kpm_pgadmin
@@ -32,3 +46,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

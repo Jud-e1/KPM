@@ -1,0 +1,21 @@
+{
+  "name": "kpm-infra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CDK app for the KPM ECS Fargate deployment",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "tsx --test test/**/*.test.ts",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy --all"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "aws-cdk": "^2.1100.0",
+    "aws-cdk-lib": "^2.220.0",
+    "constructs": "^10.4.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

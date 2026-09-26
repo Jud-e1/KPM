@@ -8,6 +8,11 @@ import {
   fetchAccountingSummary,
   fetchAccountingTransactions,
 } from "@/lib/api";
+import {
+  readScopedJson,
+  removeScopedJson,
+  writeScopedJson,
+} from "@/lib/storePersistence";
 
 export type TransactionType = "Income" | "Expense" | "Transfer";
 export type TransactionStatus = "Cleared" | "Pending";
@@ -76,147 +81,61 @@ export interface AccountingState {
   syncedRemoteTransactionIds?: string[];
 }
 
-const STORAGE_KEY = "kpm_accounting_state_v1";
+const STORAGE_KEY = "kpm_accounting_state_v2";
 const SYNC_CHANNEL_NAME = "kpm_accounting_sync_channel";
 
 const DEFAULT_PROFILE: AccountingProfile = {
   id: "default",
-  fullName: "Jude Azane",
+  fullName: "",
   role: "Admin",
-  organization: "Acme Trading Co.",
+  organization: "",
   autoReconciliation: true,
   notificationsEnabled: true,
 };
 
 const BASE_ACCOUNT_BALANCES: AccountBalance[] = [
-  { name: "Cash & Bank", amount: 62480, icon: "wallet" },
-  { name: "Accounts Receivable", amount: 12750, icon: "receipt" },
-  { name: "Inventory", amount: 28420, icon: "box" },
-  { name: "Accounts Payable", amount: 8960, icon: "file" },
-  { name: "Equity", amount: 22340, icon: "landmark" },
+  { name: "Cash & Bank", amount: 0, icon: "wallet" },
+  { name: "Accounts Receivable", amount: 0, icon: "receipt" },
+  { name: "Inventory", amount: 0, icon: "box" },
+  { name: "Accounts Payable", amount: 0, icon: "file" },
+  { name: "Equity", amount: 0, icon: "landmark" },
 ];
 
-const BASE_EXPENSES: Omit<ExpenseMetric, "percentage">[] = [
-  { name: "Inventory Purchases", amount: 7730, color: "#0F172A" },
-  { name: "Salaries & Wages", amount: 4050, color: "#A5B4D9" },
-  { name: "Rent & Utilities", amount: 2210, color: "#4F7DF3" },
-  { name: "Marketing", amount: 1470, color: "#8B8EF2" },
-  { name: "Other", amount: 2960, color: "#6976F5" },
-];
+const ACCOUNT_ICONS: Record<string, AccountBalance["icon"]> = {
+  "Cash & Bank": "wallet",
+  Cash: "wallet",
+  Bank: "wallet",
+  "Accounts Receivable": "receipt",
+  Inventory: "box",
+  "Accounts Payable": "file",
+  Equity: "landmark",
+};
 
-const FEATURED_TRANSACTIONS: AccountingTransaction[] = [
-  {
-    id: "txn-0048",
-    date: "Apr 30, 2025",
-    timestamp: new Date("2025-04-30T10:24:00").getTime(),
-    description: "Customer Payment - INV-0048",
-    reference: "INV-0048",
-    counterparty: "BrightMart Stores",
-    category: "Sales Revenue",
-    account: "Accounts Receivable",
-    type: "Income",
-    amount: 5280,
-    status: "Cleared",
-  },
-  {
-    id: "txn-0047",
-    date: "Apr 29, 2025",
-    timestamp: new Date("2025-04-29T14:17:00").getTime(),
-    description: "Inventory Purchase - PO-0047",
-    reference: "PO-0047",
-    counterparty: "Global Supplies Ltd",
-    category: "Inventory Purchases",
-    account: "Inventory Asset",
-    type: "Expense",
-    amount: 3450,
-    status: "Cleared",
-  },
-  {
-    id: "txn-0046",
-    date: "Apr 28, 2025",
-    timestamp: new Date("2025-04-28T09:32:00").getTime(),
-    description: "Office Rent",
-    reference: "RENT-APR",
-    counterparty: "Monthly rent payment",
-    category: "Rent & Utilities",
-    account: "Operating Expenses",
-    type: "Expense",
-    amount: 1800,
-    status: "Cleared",
-  },
-  {
-    id: "txn-0045",
-    date: "Apr 27, 2025",
-    timestamp: new Date("2025-04-27T11:05:00").getTime(),
-    description: "Supplier Refund",
-    reference: "RF-0021",
-    counterparty: "TechWorld Ltd",
-    category: "Other",
-    account: "Accounts Payable",
-    type: "Expense",
-    amount: 620,
-    status: "Cleared",
-  },
-  {
-    id: "txn-0044",
-    date: "Apr 26, 2025",
-    timestamp: new Date("2025-04-26T16:12:00").getTime(),
-    description: "Bank Transfer",
-    reference: "TRF-2025",
-    counterparty: "To: Business Savings",
-    category: "Transfer",
-    account: "Cash & Bank",
-    type: "Transfer",
-    amount: 5000,
-    status: "Cleared",
-  },
-  {
-    id: "txn-0043",
-    date: "Apr 25, 2025",
-    timestamp: new Date("2025-04-25T13:40:00").getTime(),
-    description: "Product Sale - POS-0032",
-    reference: "POS-0032",
-    counterparty: "Walk-in customer",
-    category: "Sales Revenue",
-    account: "Sales Revenue",
-    type: "Income",
-    amount: 1240,
-    status: "Cleared",
-  },
-];
-
-function generateInitialTransactions(): AccountingTransaction[] {
-  const transactions = [...FEATURED_TRANSACTIONS];
-  const templates: Array<Pick<AccountingTransaction, "description" | "category" | "account" | "type">> = [
-    { description: "Customer Payment", category: "Sales Revenue", account: "Accounts Receivable", type: "Income" },
-    { description: "Inventory Purchase", category: "Inventory Purchases", account: "Inventory Asset", type: "Expense" },
-    { description: "Payroll Processing", category: "Salaries & Wages", account: "Operating Expenses", type: "Expense" },
-    { description: "Marketing Campaign", category: "Marketing", account: "Operating Expenses", type: "Expense" },
-    { description: "Bank Transfer", category: "Transfer", account: "Cash & Bank", type: "Transfer" },
-  ];
-
-  for (let index = 42; index >= 1; index -= 1) {
-    const template = templates[index % templates.length];
-    const day = Math.max(1, (index % 24) + 1);
-    transactions.push({
-      id: `txn-${String(index).padStart(4, "0")}`,
-      date: `Apr ${day}, 2025`,
-      timestamp: new Date(`2025-04-${String(day).padStart(2, "0")}T${String(9 + (index % 8)).padStart(2, "0")}:30:00`).getTime(),
-      description: `${template.description} - ${String(index).padStart(4, "0")}`,
-      reference: `REF-${String(index).padStart(4, "0")}`,
-      counterparty: index % 2 ? "Acme Trading Co." : "Business partner",
-      category: template.category,
-      account: template.account,
-      type: template.type,
-      amount: 180 + ((index * 135) % 1250),
-      status: index % 9 === 0 ? "Pending" : "Cleared",
-    });
-  }
-  return transactions;
+function normalizeAccountName(account: string) {
+  const trimmed = account.trim();
+  if (!trimmed) return "Other";
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("cash") || lower.includes("bank")) return "Cash & Bank";
+  if (lower.includes("receivable") || lower === "ar") return "Accounts Receivable";
+  if (lower.includes("payable") || lower === "ap") return "Accounts Payable";
+  if (lower.includes("inventory") || lower.includes("stock")) return "Inventory";
+  if (lower.includes("equity") || lower.includes("capital")) return "Equity";
+  return trimmed;
 }
 
-const BASELINE_TRANSACTIONS = generateInitialTransactions();
-const BASELINE_TRANSACTION_IDS = new Set(BASELINE_TRANSACTIONS.map((transaction) => transaction.id));
+function signedAmount(transaction: AccountingTransaction) {
+  if (transaction.type === "Expense") return -Math.abs(transaction.amount);
+  if (transaction.type === "Income") return Math.abs(transaction.amount);
+  return transaction.amount;
+}
+
+const BASE_EXPENSES: Omit<ExpenseMetric, "percentage">[] = [
+  { name: "Inventory Purchases", amount: 0, color: "#121417" },
+  { name: "Salaries & Wages", amount: 0, color: "#5c6570" },
+  { name: "Rent & Utilities", amount: 0, color: "#8b939e" },
+  { name: "Marketing", amount: 0, color: "#d5d8de" },
+  { name: "Other", amount: 0, color: "#e6e8eb" },
+];
 
 function rawTotals(transactions: AccountingTransaction[]) {
   return transactions.reduce(
@@ -247,7 +166,6 @@ function expenseCategory(category: string) {
   return "Other";
 }
 
-const BASELINE_RAW_TOTALS = rawTotals(BASELINE_TRANSACTIONS);
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -299,36 +217,58 @@ function mapApiActivity(activity: ApiAccountingActivity): AccountingActivity {
 
 export function computeAccountingMetrics(transactions: AccountingTransaction[]): AccountingMetrics {
   const raw = rawTotals(transactions);
-  const totalRevenue = raw.income - BASELINE_RAW_TOTALS.income + 48250;
-  const totalExpenses = raw.expenses - BASELINE_RAW_TOTALS.expenses + 18420;
+  const totalRevenue = raw.income;
+  const totalExpenses = raw.expenses;
   const netProfit = totalRevenue - totalExpenses;
-  const cashDelta = (raw.income - raw.expenses) - (BASELINE_RAW_TOTALS.income - BASELINE_RAW_TOTALS.expenses);
-  const accountBalances = BASE_ACCOUNT_BALANCES.map((balance) => {
-    if (balance.name === "Cash & Bank") return { ...balance, amount: balance.amount + cashDelta };
-    if (balance.name === "Accounts Receivable") return { ...balance, amount: balance.amount + raw.pending - BASELINE_RAW_TOTALS.pending };
-    return balance;
-  });
+
+  const totalsByAccount = new Map<string, number>();
+  for (const balance of BASE_ACCOUNT_BALANCES) {
+    totalsByAccount.set(balance.name, 0);
+  }
+  for (const transaction of transactions) {
+    const name = normalizeAccountName(transaction.account || "Other");
+    totalsByAccount.set(name, (totalsByAccount.get(name) || 0) + signedAmount(transaction));
+  }
+
+  const knownNames = new Set(BASE_ACCOUNT_BALANCES.map((item) => item.name));
+  const accountBalances: AccountBalance[] = [
+    ...BASE_ACCOUNT_BALANCES.map((balance) => ({
+      ...balance,
+      amount: Number((totalsByAccount.get(balance.name) || 0).toFixed(2)),
+    })),
+    ...[...totalsByAccount.entries()]
+      .filter(([name]) => !knownNames.has(name) && name !== "Other")
+      .map(([name, amount]) => ({
+        name,
+        amount: Number(amount.toFixed(2)),
+        icon: ACCOUNT_ICONS[name] || ("landmark" as const),
+      })),
+  ];
+
+  const cashBalance =
+    accountBalances.find((item) => item.name === "Cash & Bank")?.amount ??
+    Number((raw.income - raw.expenses).toFixed(2));
+
   const expenseBreakdown = BASE_EXPENSES.map((item) => {
-    const amount = item.amount + raw.expensesByCategory[item.name] - BASELINE_RAW_TOTALS.expensesByCategory[item.name];
-    return { ...item, amount: Math.max(0, amount), percentage: totalExpenses > 0 ? Math.round((Math.max(0, amount) / totalExpenses) * 100) : 0 };
+    const amount = raw.expensesByCategory[item.name] || 0;
+    return {
+      ...item,
+      amount: Math.max(0, amount),
+      percentage: totalExpenses > 0 ? Math.round((Math.max(0, amount) / totalExpenses) * 100) : 0,
+    };
   });
   return {
     totalRevenue: Number(totalRevenue.toFixed(2)),
     totalExpenses: Number(totalExpenses.toFixed(2)),
     netProfit: Number(netProfit.toFixed(2)),
-    cashBalance: Number(accountBalances[0].amount.toFixed(2)),
-    outstandingInvoices: Number((12750 + raw.pending - BASELINE_RAW_TOTALS.pending).toFixed(2)),
+    cashBalance: Number(cashBalance.toFixed(2)),
+    outstandingInvoices: Number(raw.pending.toFixed(2)),
     expenseBreakdown,
     accountBalances,
   };
 }
 
-const DEFAULT_ACTIVITIES: AccountingActivity[] = [
-  { id: "act-1", title: "Payment received from BrightMart Stores", subtitle: "$5,280.00 · Apr 30, 2025 · 10:24 AM", time: "Just now", timestamp: Date.now(), tone: "income" },
-  { id: "act-2", title: "Invoice INV-0047 marked as paid", subtitle: "$3,450.00 · Apr 29, 2025 · 2:17 PM", time: "1 day ago", timestamp: Date.now() - 86400000, tone: "income" },
-  { id: "act-3", title: "Reconciliation completed", subtitle: "Bank Account · Apr 28, 2025 · 9:32 AM", time: "2 days ago", timestamp: Date.now() - 172800000, tone: "info" },
-  { id: "act-4", title: "New supplier added", subtitle: "Global Supplies Ltd · Apr 26, 2025 · 4:21 PM", time: "4 days ago", timestamp: Date.now() - 345600000, tone: "info" },
-];
+const DEFAULT_ACTIVITIES: AccountingActivity[] = [];
 
 class AccountingStore {
   private state: AccountingState;
@@ -357,44 +297,51 @@ class AccountingStore {
         };
       } catch {}
       window.addEventListener("storage", (event) => {
-        if (event.key === STORAGE_KEY && event.newValue) {
-          try {
-            this.state = JSON.parse(event.newValue);
-            this.state.metrics = computeAccountingMetrics(this.state.transactions);
-            this.notify(false);
-          } catch {}
-        }
+        if (!event.key?.startsWith(`${STORAGE_KEY}:`) || !event.newValue) return;
+        if (this.ownerId && event.key !== `${STORAGE_KEY}:${this.ownerId}`) return;
+        try {
+          this.state = JSON.parse(event.newValue);
+          this.state.metrics = computeAccountingMetrics(this.state.transactions);
+          this.notify(false);
+        } catch {}
       });
     }
   }
 
+  private ownerId: string | null = null;
+
+  public bindOwner(userId: string) {
+    if (this.ownerId === userId) return;
+    this.ownerId = userId;
+    this.remoteRevision = null;
+    this.state = this.loadStateFor(userId);
+    this.notify();
+    void this.syncFromBackend(true);
+  }
+
   private loadState(): AccountingState {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as AccountingState;
-          if (parsed.transactions?.length) {
-            return {
-              ...parsed,
-              profile: parsed.profile || DEFAULT_PROFILE,
-              activities: parsed.activities || DEFAULT_ACTIVITIES,
-              metrics: computeAccountingMetrics(parsed.transactions),
-              syncedRemoteTransactionIds: parsed.syncedRemoteTransactionIds || [],
-            };
-          }
-        }
-      } catch {}
-    }
-    const transactions = generateInitialTransactions();
     return {
-      transactions,
-      activities: DEFAULT_ACTIVITIES,
-      profile: DEFAULT_PROFILE,
-      metrics: computeAccountingMetrics(transactions),
+      transactions: [],
+      activities: [],
+      profile: { ...DEFAULT_PROFILE },
+      metrics: computeAccountingMetrics([]),
       lastSync: new Date().toISOString(),
       syncedRemoteTransactionIds: [],
     };
+  }
+
+  private loadStateFor(userId: string): AccountingState {
+    const parsed = readScopedJson<AccountingState>(STORAGE_KEY, userId);
+    if (parsed && Array.isArray(parsed.transactions)) {
+      return {
+        ...parsed,
+        profile: parsed.profile || DEFAULT_PROFILE,
+        activities: Array.isArray(parsed.activities) ? parsed.activities : [],
+        metrics: computeAccountingMetrics(parsed.transactions),
+        syncedRemoteTransactionIds: parsed.syncedRemoteTransactionIds || [],
+      };
+    }
+    return this.loadState();
   }
 
   private notify(broadcast = true) {
@@ -404,9 +351,7 @@ class AccountingStore {
         this.broadcastChannel?.postMessage({ type: "ACCOUNTING_UPDATE", state: this.state });
         if (this.persistTimer !== null) window.clearTimeout(this.persistTimer);
         this.persistTimer = window.setTimeout(() => {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
-          } catch {}
+          writeScopedJson(STORAGE_KEY, this.ownerId, this.state);
         }, 120);
       } catch {}
     }
@@ -579,13 +524,9 @@ class AccountingStore {
       const remoteById = new Map(mapped.map((transaction) => [transaction.id, transaction]));
       const previousRemoteIds = new Set(syncedRemoteTransactionIds);
       const unsynced = this.state.transactions.filter(
-        (transaction) => !BASELINE_TRANSACTION_IDS.has(transaction.id) && !previousRemoteIds.has(transaction.id) && !remoteById.has(transaction.id)
+        (transaction) => !previousRemoteIds.has(transaction.id) && !remoteById.has(transaction.id)
       );
-      const baseline = this.state.transactions
-        .filter((transaction) => BASELINE_TRANSACTION_IDS.has(transaction.id))
-        .map((transaction) => remoteById.get(transaction.id) || transaction);
-      const remoteNonBaseline = mapped.filter((transaction) => !BASELINE_TRANSACTION_IDS.has(transaction.id));
-      transactions = [...unsynced, ...remoteNonBaseline, ...baseline];
+      transactions = [...unsynced, ...mapped];
       syncedRemoteTransactionIds = mapped.map((transaction) => transaction.id);
     }
 
@@ -646,6 +587,26 @@ class AccountingStore {
       timestamp: Date.now(),
       tone: income ? "income" : transaction.type === "Expense" ? "expense" : "info",
     };
+  }
+
+  public resetToDefault() {
+    removeScopedJson(STORAGE_KEY, this.ownerId);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
+    this.ownerId = null;
+    this.remoteRevision = null;
+    this.state = {
+      transactions: [],
+      activities: [],
+      profile: { ...DEFAULT_PROFILE },
+      metrics: computeAccountingMetrics([]),
+      lastSync: new Date().toISOString(),
+      syncedRemoteTransactionIds: [],
+    };
+    this.notify();
   }
 }
 

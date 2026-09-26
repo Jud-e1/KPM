@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import { ArrowRight, Play, Check } from "lucide-react";
-import { DashboardMockup } from "./DashboardMockup";
+import Link from "next/link";
+import { Play, Check } from "lucide-react";
+import { HeroPortraitSlider } from "./HeroPortraitSlider";
 
 interface HeroSectionProps {
-  onOpenAuth: (mode: "login" | "signup") => void;
   onOpenDemo: () => void;
   onOrderNowClick: () => void;
   onViewForecastClick: () => void;
@@ -14,102 +14,79 @@ interface HeroSectionProps {
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
-  onOpenAuth,
   onOpenDemo,
-  onOrderNowClick,
-  onViewForecastClick,
-  onErrorDetectionClick,
-  onB2BIntegrationClick,
 }) => {
   return (
-    <section className="relative overflow-hidden pt-8 pb-16 lg:pt-14 lg:pb-24">
-      {/* Background Soft Glow / Ambient Gradient matching the screenshot */}
-      <div className="absolute top-0 right-0 w-[55%] h-[600px] bg-gradient-to-bl from-slate-200/40 via-blue-50/20 to-transparent -z-10 rounded-bl-[120px] pointer-events-none" />
+    <section
+      id="home"
+      className="relative -mt-[72px] scroll-mt-20 overflow-hidden bg-[#0B1220] sm:-mt-20"
+    >
+      {/* Full-bleed cinematic portrait plane */}
+      <div className="absolute inset-0">
+        <HeroPortraitSlider fullBleed />
+      </div>
 
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          {/* ======================================================= */}
-          {/* LEFT COLUMN: Hero Copy & Value Proposition              */}
-          {/* ======================================================= */}
-          <div className="lg:col-span-6 space-y-6 sm:space-y-8 z-10">
-            {/* Top Pill Tag */}
-            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full border border-slate-200 bg-white/80 backdrop-blur-sm shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-slate-600" />
-              <span className="text-[12.5px] font-semibold text-slate-800 tracking-tight">
-                B2B SaaS Platform
-              </span>
-            </div>
-
-            {/* Main Headline - Pixel-Perfect Typography */}
-            <h1 className="text-[42px] sm:text-[54px] lg:text-[60px] font-extrabold tracking-tight text-[#0F172A] leading-[1.08]">
-              AI-Powered Inventory <br className="hidden sm:inline" />
-              & Accounting for Modern <br className="hidden sm:inline" />
-              Businesses
-            </h1>
-
-            {/* Subparagraph */}
-            <p className="text-slate-600 text-base sm:text-[17px] leading-relaxed max-w-xl font-normal">
-              KPM automates your inventory, reconciles your accounts, catches errors, and runs 24/7 with AI — so you can focus on growing your business.
+      <div className="relative z-10 flex min-h-[min(92vh,880px)] items-end px-4 pb-16 pt-28 sm:px-8 sm:pb-20 lg:items-center lg:px-12 lg:pb-24 lg:pt-24">
+        <div className="max-w-[1400px] mx-auto w-full">
+          <div className="max-w-xl space-y-6">
+            <p className="text-[28px] sm:text-[32px] font-extrabold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
+              KPM
             </p>
 
-            {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-3.5 pt-1">
-              {/* Primary CTA */}
-              <button
-                onClick={() => onOpenAuth("signup")}
-                className="inline-flex items-center space-x-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white text-[14.5px] font-semibold px-7 py-3.5 rounded-full shadow-md hover:shadow-lg transition-all cursor-pointer group"
-              >
-                <span>Start Free Trial</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </button>
+            <h1 className="text-[36px] sm:text-[48px] lg:text-[52px] font-extrabold tracking-tight text-white leading-[1.05] drop-shadow-[0_2px_18px_rgba(0,0,0,0.5)]">
+              AI-Powered Inventory and Accounting for{" "}
+              <span className="relative inline-block">
+                Businesses
+                <svg
+                  viewBox="0 0 180 14"
+                  className="absolute -bottom-1 left-0 h-3 w-full text-white"
+                  aria-hidden
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M2 9 C 28 2, 46 13, 78 7 S 140 2, 178 8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+            </h1>
 
-              {/* Secondary CTA: Watch Demo */}
-              <button
-                onClick={onOpenDemo}
-                className="inline-flex items-center space-x-2.5 bg-white hover:bg-slate-50 text-[#0F172A] border border-slate-200/90 text-[14.5px] font-semibold px-6 py-3.5 rounded-full shadow-xs hover:shadow-sm transition-all cursor-pointer group"
+            <p className="text-white/85 text-[15px] sm:text-[16.5px] leading-relaxed max-w-[34rem] drop-shadow-[0_1px_10px_rgba(0,0,0,0.45)]">
+              KPM automates your inventory, reconciles your accounts, catches errors, and runs 24/7
+              with AI — so you can focus on growing your business.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-0.5">
+              <Link
+                href="/signup"
+                className="inline-flex items-center bg-white hover:bg-white/90 text-[#0F172A] text-[14px] font-semibold px-6 py-3.5 rounded-full shadow-[0_8px_20px_-8px_rgba(15,23,42,0.45)] transition-all duration-200 ease-out hover:scale-[1.02]"
               >
-                <div className="w-4 h-4 flex items-center justify-center">
-                  <Play className="w-3.5 h-3.5 fill-[#0F172A] text-[#0F172A]" />
-                </div>
+                Get Started
+              </Link>
+
+              <button
+                type="button"
+                onClick={onOpenDemo}
+                className="inline-flex items-center gap-2 text-[14px] font-semibold text-white px-2 py-3.5 hover:opacity-70 transition-all duration-200 ease-out hover:scale-[1.02] cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
                 <span>Watch Demo</span>
               </button>
             </div>
 
-            {/* Micro Benefits / Trust Badges */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 text-[13px] font-medium text-slate-600">
-              <div className="flex items-center space-x-1.5">
-                <div className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-[13px] font-medium text-white/80">
+              {["No credit card required", "Quick setup", "Cancel anytime"].map((label) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="w-[15px] h-[15px] rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                    <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
+                  </span>
+                  <span>{label}</span>
                 </div>
-                <span>No credit card required</span>
-              </div>
-
-              <div className="flex items-center space-x-1.5">
-                <div className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
-                </div>
-                <span>Quick setup</span>
-              </div>
-
-              <div className="flex items-center space-x-1.5">
-                <div className="w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 text-white stroke-[3]" />
-                </div>
-                <span>Cancel anytime</span>
-              </div>
+              ))}
             </div>
-          </div>
-
-          {/* ======================================================= */}
-          {/* RIGHT COLUMN: Interactive 3D Mockup & Floating Badges   */}
-          {/* ======================================================= */}
-          <div className="lg:col-span-6 relative mt-6 lg:mt-0">
-            <DashboardMockup
-              onOrderNowClick={onOrderNowClick}
-              onViewForecastClick={onViewForecastClick}
-              onErrorDetectionClick={onErrorDetectionClick}
-              onB2BIntegrationClick={onB2BIntegrationClick}
-            />
           </div>
         </div>
       </div>

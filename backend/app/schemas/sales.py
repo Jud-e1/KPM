@@ -1,6 +1,27 @@
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
+
+
+class SalesOrderLineIn(BaseModel):
+    product_id: Optional[str] = Field(None, max_length=64)
+    sku: Optional[str] = Field(None, max_length=80)
+    product_name: Optional[str] = Field(None, max_length=255)
+    qty: int = Field(1, ge=1)
+    unit_price: Optional[float] = Field(None, ge=0.0)
+
+
+class SalesOrderLineOut(BaseModel):
+    id: str
+    order_id: str
+    product_id: Optional[str] = None
+    sku: str
+    product_name: str
+    qty: int
+    unit_price: float
+    line_total: float
+
+    model_config = {"from_attributes": True}
 
 
 class SalesOrderBase(BaseModel):
@@ -15,6 +36,7 @@ class SalesOrderBase(BaseModel):
 
 class SalesOrderCreate(SalesOrderBase):
     id: Optional[str] = None
+    lines: Optional[List[SalesOrderLineIn]] = None
 
 
 class SalesOrderUpdate(BaseModel):
@@ -28,9 +50,11 @@ class SalesOrderResponse(SalesOrderBase):
     order_date: datetime
     created_at: datetime
     updated_at: datetime
+    invoice_number: Optional[str] = None
+    posted_at: Optional[datetime] = None
+    lines: List[SalesOrderLineOut] = []
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class SalesSummaryResponse(BaseModel):

@@ -1,10 +1,34 @@
 // frontend/src/lib/inventoryStore.ts
+import {
+  purgeInventoryStorage,
+  readScopedJson,
+  removeScopedJson,
+  writeScopedJson,
+} from "@/lib/storePersistence";
+import {
+  adjustInventoryStock,
+  bulkCreateInventoryProducts,
+  createInventoryProduct,
+  deleteInventoryProduct,
+  fetchInventoryProducts,
+  fetchInventorySummary,
+  updateInventoryProduct,
+} from "@/lib/api";
+
 export interface InventoryProduct {
   id: string;
   name: string;
   subtitle: string;
   sku: string;
-  category: "Electronics" | "Furniture" | "Accessories" | "Home & Kitchen" | "Stationery" | "Bags & Luggage" | "Others" | string;
+  category:
+    | "Electronics"
+    | "Furniture"
+    | "Accessories"
+    | "Home & Kitchen"
+    | "Stationery"
+    | "Bags & Luggage"
+    | "Others"
+    | string;
   stock: number;
   status: "In Stock" | "Low Stock" | "Out of Stock";
   price: number;
@@ -48,346 +72,156 @@ export interface InventoryState {
   alerts: InventoryAlert[];
   metrics: InventoryMetrics;
   lastSync: string;
+  booting: boolean;
+  syncError: string | null;
 }
 
-const STORAGE_KEY = "kpm_inventory_state_v1";
-const SYNC_CHANNEL_NAME = "kpm_inventory_sync_channel";
+export type InventoryProductPayload = {
+  name: string;
+  subtitle?: string;
+  sku: string;
+  category?: string;
+  stock?: number;
+  price?: number;
+  low_stock_threshold?: number;
+  image?: string | null;
+};
 
-// Featured sample items from the screenshot
-const FEATURED_ITEMS: InventoryProduct[] = [
-  {
-    id: "prod-001",
-    name: "Wireless Bluetooth Headphones",
-    subtitle: "Noise Cancelling, Black",
-    sku: "WH-001",
-    category: "Electronics",
-    stock: 245,
-    status: "In Stock",
-    price: 89.99,
-    lowStockThreshold: 25,
-    image: "headphones",
-  },
-  {
-    id: "prod-002",
-    name: "Smart Watch Series 8",
-    subtitle: "Fitness & Health Tracker",
-    sku: "SW-008",
-    category: "Electronics",
-    stock: 78,
-    status: "In Stock",
-    price: 199.0,
-    lowStockThreshold: 15,
-    image: "watch",
-  },
-  {
-    id: "prod-003",
-    name: "Laptop Backpack",
-    subtitle: "Waterproof, 15.6 inch",
-    sku: "BP-015",
-    category: "Bags & Luggage",
-    stock: 32,
-    status: "Low Stock",
-    price: 49.99,
-    lowStockThreshold: 40,
-    image: "backpack",
-  },
-  {
-    id: "prod-004",
-    name: "Wireless Mouse",
-    subtitle: "Ergonomic, Rechargeable",
-    sku: "WM-022",
-    category: "Accessories",
-    stock: 0,
-    status: "Out of Stock",
-    price: 24.99,
-    lowStockThreshold: 20,
-    image: "mouse",
-  },
-  {
-    id: "prod-005",
-    name: "USB-C Charging Cable",
-    subtitle: "Fast Charge, 1.5m",
-    sku: "CC-034",
-    category: "Accessories",
-    stock: 156,
-    status: "In Stock",
-    price: 12.99,
-    lowStockThreshold: 30,
-    image: "cable",
-  },
-  {
-    id: "prod-006",
-    name: "Office Chair",
-    subtitle: "Ergonomic, Adjustable",
-    sku: "OC-041",
-    category: "Furniture",
-    stock: 18,
-    status: "Low Stock",
-    price: 129.99,
-    lowStockThreshold: 20,
-    image: "chair",
-  },
-  {
-    id: "prod-007",
-    name: "Notebook (A5)",
-    subtitle: "200 Pages, Ruled",
-    sku: "NB-056",
-    category: "Stationery",
-    stock: 320,
-    status: "In Stock",
-    price: 3.49,
-    lowStockThreshold: 50,
-    image: "notebook",
-  },
-  {
-    id: "prod-008",
-    name: "External Hard Drive",
-    subtitle: "1TB, USB 3.0",
-    sku: "HD-067",
-    category: "Electronics",
-    stock: 64,
-    status: "In Stock",
-    price: 69.99,
-    lowStockThreshold: 15,
-    image: "harddrive",
-  },
-  {
-    id: "prod-009",
-    name: "Coffee Mug",
-    subtitle: "Ceramic, 350ml",
-    sku: "CM-078",
-    category: "Home & Kitchen",
-    stock: 120,
-    status: "In Stock",
-    price: 9.99,
-    lowStockThreshold: 25,
-    image: "mug",
-  },
-  {
-    id: "prod-010",
-    name: "Desk Lamp",
-    subtitle: "LED, Adjustable",
-    sku: "DL-089",
-    category: "Furniture",
-    stock: 6,
-    status: "Low Stock",
-    price: 29.99,
-    lowStockThreshold: 15,
-    image: "lamp",
-  },
-];
+const STORAGE_KEY = "kpm_inventory_state_v3";
+const SYNC_CHANNEL_NAME = "kpm_inventory_sync_channel_v3";
 
-// Generate additional products to match the exact 248 total, 233 in stock, 12 low stock, 3 out of stock
-function generateInitialProducts(): InventoryProduct[] {
-  const products: InventoryProduct[] = [...FEATURED_ITEMS];
-  
-  // We already have:
-  // In Stock: 6 (prod 1, 2, 5, 7, 8, 9)
-  // Low Stock: 3 (prod 3, 6, 10)
-  // Out of Stock: 1 (prod 4)
-  // We need:
-  // In Stock: 233 - 6 = 227 more
-  // Low Stock: 12 - 3 = 9 more
-  // Out of Stock: 3 - 1 = 2 more
-  // Total additional = 238 more (248 total)
+/** Detect the old generated “Unit Model / Commercial Grade” catalog (≈60 SKUs). */
+function looksLikeLegacyDemoCatalog(products: InventoryProduct[]): boolean {
+  if (products.length < 20) return false;
+  const unitModel = products.filter((p) => /Unit Model [A-Z]-\d+/i.test(p.name)).length;
+  const commercial = products.filter((p) =>
+    /Commercial Grade SKU/i.test(p.subtitle || "")
+  ).length;
+  return unitModel >= 8 || commercial >= 8;
+}
 
-  // 2 more Out of Stock
-  products.push(
-    {
-      id: "prod-011",
-      name: "Mechanical Gaming Keyboard",
-      subtitle: "RGB Backlit, Blue Switch",
-      sku: "KB-093",
-      category: "Electronics",
-      stock: 0,
-      status: "Out of Stock",
-      price: 79.99,
-      lowStockThreshold: 15,
-      image: "keyboard",
-    },
-    {
-      id: "prod-012",
-      name: "Ceramic Water Carafe",
-      subtitle: "1.2L Glass & Wood Lid",
-      sku: "WC-104",
-      category: "Home & Kitchen",
-      stock: 0,
-      status: "Out of Stock",
-      price: 28.5,
-      lowStockThreshold: 10,
-      image: "mug",
-    }
+function emptyMetrics(): InventoryMetrics {
+  return {
+    totalProducts: 0,
+    totalStockValue: 0,
+    inStockCount: 0,
+    inStockPercentage: 0,
+    lowStockCount: 0,
+    lowStockPercentage: 0,
+    outOfStockCount: 0,
+    outOfStockPercentage: 0,
+    topCategories: [],
+  };
+}
+
+function emptyState(booting = true): InventoryState {
+  return {
+    products: [],
+    alerts: [],
+    metrics: emptyMetrics(),
+    lastSync: new Date().toISOString(),
+    booting,
+    syncError: null,
+  };
+}
+
+function deriveAlerts(products: InventoryProduct[]): InventoryAlert[] {
+  const out = products.filter((p) => p.status === "Out of Stock" || p.stock === 0);
+  const low = products.filter(
+    (p) =>
+      p.status === "Low Stock" ||
+      (p.lowStockThreshold != null && p.stock > 0 && p.stock <= p.lowStockThreshold)
   );
-
-  // 9 more Low Stock items
-  const lowStockTemplates = [
-    { name: "Standing Desk Converter", sub: "Gas Spring 32 inch", sku: "SD-110", cat: "Furniture", stock: 4, price: 189.0, thresh: 10 },
-    { name: "Noise Cancelling Earbuds", sub: "True Wireless, IPX7", sku: "EB-111", cat: "Electronics", stock: 8, price: 59.99, thresh: 20 },
-    { name: "Aluminum Laptop Stand", sub: "Foldable Portable", sku: "LS-112", cat: "Accessories", stock: 11, price: 34.99, thresh: 25 },
-    { name: "Fountain Pen Executive", sub: "Fine Nib, Black Ink", sku: "FP-113", cat: "Stationery", stock: 7, price: 24.5, thresh: 15 },
-    { name: "French Press Coffee Maker", sub: "Stainless Steel 1L", sku: "FP-114", cat: "Home & Kitchen", stock: 5, price: 39.99, thresh: 15 },
-    { name: "Leather Document Folder", sub: "A4 Professional Portfolio", sku: "DF-115", cat: "Bags & Luggage", stock: 9, price: 42.0, thresh: 20 },
-    { name: "4K Web Camera Pro", sub: "Dual Mic, Privacy Shutter", sku: "WC-116", cat: "Electronics", stock: 6, price: 89.0, thresh: 15 },
-    { name: "Desk Organizer Wood", sub: "Bamboo 5 Compartments", sku: "DO-117", cat: "Stationery", stock: 10, price: 22.99, thresh: 25 },
-    { name: "Cast Iron Teapot", sub: "Traditional 800ml", sku: "TP-118", cat: "Home & Kitchen", stock: 3, price: 49.0, thresh: 12 },
-  ];
-
-  lowStockTemplates.forEach((t, i) => {
-    products.push({
-      id: `prod-ls-${i + 1}`,
-      name: t.name,
-      subtitle: t.sub,
-      sku: t.sku,
-      category: t.cat,
-      stock: t.stock,
-      status: "Low Stock",
-      price: t.price,
-      lowStockThreshold: t.thresh,
-    });
-  });
-
-  // 227 In Stock items generated systematically across categories
-  const categoriesPool = [
-    { cat: "Electronics", avgPrice: 165 },
-    { cat: "Furniture", avgPrice: 195 },
-    { cat: "Accessories", avgPrice: 42 },
-    { cat: "Home & Kitchen", avgPrice: 52 },
-    { cat: "Stationery", avgPrice: 18 },
-    { cat: "Others", avgPrice: 38 },
-  ];
-
-  for (let i = 1; i <= 227; i++) {
-    const pool = categoriesPool[(i - 1) % categoriesPool.length];
-    const itemNum = 120 + i;
-    const stockQty = 40 + ((i * 17) % 210); // healthy stock
-    const priceVariance = (i % 7) * 4.5;
-    const price = Math.max(9.99, Number((pool.avgPrice + priceVariance - 10).toFixed(2)));
-
-    products.push({
-      id: `prod-gen-${i}`,
-      name: `${pool.cat} Unit Model ${String.fromCharCode(65 + (i % 26))}-${itemNum}`,
-      subtitle: `Commercial Grade SKU #${itemNum}`,
-      sku: `${pool.cat.slice(0, 2).toUpperCase()}-${String(itemNum).padStart(3, "0")}`,
-      category: pool.cat,
-      stock: stockQty,
-      status: "In Stock",
-      price: price,
-      lowStockThreshold: 15,
+  const alerts: InventoryAlert[] = [];
+  const now = Date.now();
+  if (out.length) {
+    alerts.push({
+      id: "alert-out",
+      title: `${out.length} product${out.length === 1 ? "" : "s"} out of stock`,
+      subtitle: "Immediate attention required",
+      time: "Just now",
+      type: "critical",
+      timestamp: now,
     });
   }
-
-  return products;
+  if (low.length) {
+    alerts.push({
+      id: "alert-low",
+      title: `${low.length} product${low.length === 1 ? "" : "s"} running low`,
+      subtitle: "Consider reordering soon",
+      time: "Just now",
+      type: "warning",
+      timestamp: now - 1,
+    });
+  }
+  return alerts;
 }
 
-const DEFAULT_ALERTS: InventoryAlert[] = [
-  {
-    id: "alert-1",
-    title: "3 products are out of stock",
-    subtitle: "Immediate attention required",
-    time: "2h ago",
-    type: "critical",
-    timestamp: Date.now() - 2 * 3600 * 1000,
-  },
-  {
-    id: "alert-2",
-    title: "12 products are running low",
-    subtitle: "Consider reordering soon",
-    time: "4h ago",
-    type: "warning",
-    timestamp: Date.now() - 4 * 3600 * 1000,
-  },
-  {
-    id: "alert-3",
-    title: "New stock received",
-    subtitle: "PO #4587 • 200 units",
-    time: "6h ago",
-    type: "info",
-    timestamp: Date.now() - 6 * 3600 * 1000,
-  },
-  {
-    id: "alert-4",
-    title: "Inventory sync completed",
-    subtitle: "All systems operational",
-    time: "8h ago",
-    type: "success",
-    timestamp: Date.now() - 8 * 3600 * 1000,
-  },
-];
-
 export function computeMetrics(products: InventoryProduct[]): InventoryMetrics {
+  if (!products.length) return emptyMetrics();
+
   const totalProducts = products.length;
   let inStockCount = 0;
   let lowStockCount = 0;
   let outOfStockCount = 0;
   let totalStockValue = 0;
-
   const categoryMap: Record<string, { value: number; count: number }> = {};
 
   for (const p of products) {
     if (p.status === "Out of Stock" || p.stock === 0) {
       outOfStockCount++;
-    } else if (p.status === "Low Stock" || (p.lowStockThreshold && p.stock <= p.lowStockThreshold)) {
+    } else if (
+      p.status === "Low Stock" ||
+      (p.lowStockThreshold != null && p.stock <= p.lowStockThreshold)
+    ) {
       lowStockCount++;
     } else {
       inStockCount++;
     }
-
     const itemValue = p.stock * p.price;
     totalStockValue += itemValue;
-
     const catKey = p.category || "Others";
-    if (!categoryMap[catKey]) {
-      categoryMap[catKey] = { value: 0, count: 0 };
-    }
+    if (!categoryMap[catKey]) categoryMap[catKey] = { value: 0, count: 0 };
     categoryMap[catKey].value += itemValue;
     categoryMap[catKey].count += 1;
   }
 
-  // If initial seed is unchanged, anchor nicely around screenshot's $482,650
-  if (totalProducts === 248 && Math.abs(totalStockValue - 482650) > 10000) {
-    totalStockValue = 482650;
-  }
-
-  const inStockPercentage = totalProducts > 0 ? Math.round((inStockCount / totalProducts) * 100) : 0;
-  const lowStockPercentage = totalProducts > 0 ? Math.round((lowStockCount / totalProducts) * 100) : 0;
-  const outOfStockPercentage = totalProducts > 0 ? Math.round((outOfStockCount / totalProducts) * 100) : 0;
-
-  // Pre-defined category order matching the screenshot
-  const categoryOrder = ["Electronics", "Furniture", "Accessories", "Home & Kitchen", "Stationery", "Others"];
-  const categoryFixedPerc: Record<string, { pct: number; val: number }> = {
-    Electronics: { pct: 42, val: 202450 },
-    Furniture: { pct: 18, val: 86760 },
-    Accessories: { pct: 15, val: 72380 },
-    "Home & Kitchen": { pct: 12, val: 57120 },
-    Stationery: { pct: 8, val: 38420 },
-    Others: { pct: 5, val: 25520 },
-  };
-
-  const topCategories: CategoryMetric[] = categoryOrder.map((catName) => {
-    const existing = categoryMap[catName];
-    const fixed = categoryFixedPerc[catName];
-    
-    const val = totalProducts === 248 ? fixed.val : (existing?.value || (totalStockValue * fixed.pct) / 100);
-    const pct = totalStockValue > 0 ? Math.round((val / totalStockValue) * 100) : fixed.pct;
-    
-    return {
-      name: catName,
-      percentage: pct,
-      value: Math.round(val),
-      count: existing?.count || Math.round(totalProducts * (pct / 100)),
-    };
-  });
+  const topCategories: CategoryMetric[] = Object.entries(categoryMap)
+    .map(([name, data]) => ({
+      name,
+      percentage: totalStockValue > 0 ? Math.round((data.value / totalStockValue) * 100) : 0,
+      value: Math.round(data.value),
+      count: data.count,
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
 
   return {
     totalProducts,
-    totalStockValue: Math.round(totalStockValue),
+    totalStockValue: Math.round(totalStockValue * 100) / 100,
     inStockCount,
-    inStockPercentage,
+    inStockPercentage: totalProducts > 0 ? Math.round((inStockCount / totalProducts) * 100) : 0,
     lowStockCount,
-    lowStockPercentage,
+    lowStockPercentage: totalProducts > 0 ? Math.round((lowStockCount / totalProducts) * 100) : 0,
     outOfStockCount,
-    outOfStockPercentage,
+    outOfStockPercentage: totalProducts > 0 ? Math.round((outOfStockCount / totalProducts) * 100) : 0,
     topCategories,
+  };
+}
+
+function mapRemoteProduct(row: Record<string, unknown>): InventoryProduct {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    subtitle: String(row.subtitle || ""),
+    sku: String(row.sku),
+    category: String(row.category || "General"),
+    stock: Number(row.stock || 0),
+    status: (row.status as InventoryProduct["status"]) || "In Stock",
+    price: Number(row.price || 0),
+    lowStockThreshold: Number(row.low_stock_threshold ?? 15),
+    image: row.image ? String(row.image) : undefined,
+    lastUpdated: row.updated_at ? String(row.updated_at) : new Date().toISOString(),
   };
 }
 
@@ -395,85 +229,128 @@ class InventoryStore {
   private state: InventoryState;
   private listeners: Set<(state: InventoryState) => void> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
+  private ownerId: string | null = null;
+  private liveConnectionCount = 0;
+  private liveSyncTimer: number | null = null;
+  private visibilityHandler: (() => void) | null = null;
+  private syncPromise: Promise<void> | null = null;
+  private remoteRevision: string | null = null;
+  private hasSyncedOnce = false;
 
   constructor() {
-    this.state = this.loadState();
+    this.state = emptyState(true);
 
     if (typeof window !== "undefined") {
       try {
         this.broadcastChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
         this.broadcastChannel.onmessage = (event) => {
-          if (event.data && event.data.type === "INVENTORY_UPDATE") {
-            this.state = event.data.state;
+          if (event.data && event.data.type === "INVENTORY_UPDATE" && event.data.state) {
+            const incoming = event.data.state as InventoryState;
+            if (
+              !Array.isArray(incoming.products) ||
+              looksLikeLegacyDemoCatalog(incoming.products)
+            ) {
+              return;
+            }
+            // Only accept peer updates after we have synced from the DB ourselves.
+            if (!this.hasSyncedOnce) return;
+            this.state = {
+              ...incoming,
+              booting: false,
+              syncError: this.state.syncError,
+            };
             this.notify(false);
           }
         };
       } catch {
-        // Fallback
+        /* ignore */
       }
 
       window.addEventListener("storage", (e) => {
-        if (e.key === STORAGE_KEY && e.newValue) {
-          try {
-            this.state = JSON.parse(e.newValue);
-            this.notify(false);
-          } catch {}
+        if (!e.key?.startsWith(`${STORAGE_KEY}:`) || !e.newValue) return;
+        if (this.ownerId && e.key !== `${STORAGE_KEY}:${this.ownerId}`) return;
+        try {
+          const parsed = JSON.parse(e.newValue) as InventoryState;
+          if (!Array.isArray(parsed.products)) return;
+          if (looksLikeLegacyDemoCatalog(parsed.products)) {
+            purgeInventoryStorage();
+            return;
+          }
+          if (!this.hasSyncedOnce) return;
+          this.state = {
+            products: parsed.products,
+            alerts: deriveAlerts(parsed.products),
+            metrics: computeMetrics(parsed.products),
+            lastSync: parsed.lastSync || new Date().toISOString(),
+            booting: false,
+            syncError: this.state.syncError,
+          };
+          this.notify(false);
+        } catch {
+          /* ignore */
         }
       });
     }
   }
 
-  private loadState(): InventoryState {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.products && parsed.products.length > 0) {
-            parsed.metrics = computeMetrics(parsed.products);
-            return parsed;
-          }
-        }
-      } catch {}
+  /** Bind cache to the signed-in user. Never hydrate unscoped/legacy keys. */
+  public bindOwner(userId: string) {
+    if (this.ownerId === userId) {
+      // Same user — still force a live DB pull so demo caches cannot linger.
+      void this.syncFromBackend(true);
+      return;
     }
-
-    const initialProducts = generateInitialProducts();
-    const initialMetrics = computeMetrics(initialProducts);
-
-    return {
-      products: initialProducts,
-      alerts: DEFAULT_ALERTS,
-      metrics: initialMetrics,
-      lastSync: new Date().toISOString(),
-    };
+    this.ownerId = userId;
+    this.remoteRevision = null;
+    this.hasSyncedOnce = false;
+    purgeInventoryStorage();
+    // Do not show stale local products as truth — start empty until DB sync.
+    this.state = emptyState(true);
+    this.notify(false);
+    void this.syncFromBackend(true);
   }
 
   private persist() {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
-      } catch {}
+    if (typeof window === "undefined" || !this.ownerId || !this.hasSyncedOnce) return;
+    const cachePayload: InventoryState = {
+      ...this.state,
+      booting: false,
+      syncError: null,
+    };
+    writeScopedJson(STORAGE_KEY, this.ownerId, cachePayload);
 
-      if (this.broadcastChannel) {
-        try {
-          this.broadcastChannel.postMessage({
-            type: "INVENTORY_UPDATE",
-            state: this.state,
-          });
-        } catch {}
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          type: "INVENTORY_UPDATE",
+          state: cachePayload,
+        });
+      } catch {
+        /* ignore */
       }
     }
   }
 
   private notify(broadcast = true) {
     this.listeners.forEach((listener) => listener(this.state));
-    if (broadcast) {
-      this.persist();
-    }
+    if (broadcast) this.persist();
+  }
+
+  private setMeta(partial: Partial<Pick<InventoryState, "booting" | "syncError">>) {
+    this.state = { ...this.state, ...partial };
+    this.notify(false);
   }
 
   public getState(): InventoryState {
     return this.state;
+  }
+
+  public getBooting(): boolean {
+    return this.state.booting;
+  }
+
+  public getSyncError(): string | null {
+    return this.state.syncError;
   }
 
   public subscribe(listener: (state: InventoryState) => void): () => void {
@@ -484,246 +361,189 @@ class InventoryStore {
     };
   }
 
-  public addProduct(productInput: Omit<InventoryProduct, "id" | "status"> & { status?: InventoryProduct["status"] }) {
-    const stock = Number(productInput.stock) || 0;
-    const price = Number(productInput.price) || 0;
-    const threshold = productInput.lowStockThreshold || 15;
-
-    let status: InventoryProduct["status"] = "In Stock";
-    if (stock === 0) status = "Out of Stock";
-    else if (stock <= threshold) status = "Low Stock";
-
-    const newProduct: InventoryProduct = {
-      id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      name: productInput.name.trim(),
-      subtitle: productInput.subtitle?.trim() || "General SKU",
-      sku: productInput.sku?.trim() || `SKU-${Math.floor(100 + Math.random() * 900)}`,
-      category: productInput.category || "General",
-      stock,
-      status: productInput.status || status,
-      price,
-      lowStockThreshold: threshold,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    const newProducts = [newProduct, ...this.state.products];
-    const newMetrics = computeMetrics(newProducts);
-
-    const newAlert: InventoryAlert = {
-      id: `alert-${Date.now()}`,
-      title: `Product Added: ${newProduct.name}`,
-      subtitle: `${newProduct.stock} units added to ${newProduct.category}`,
-      time: "Just now",
-      type: "info",
-      timestamp: Date.now(),
-    };
-
-    this.state = {
-      ...this.state,
-      products: newProducts,
-      alerts: [newAlert, ...this.state.alerts.slice(0, 9)],
-      metrics: newMetrics,
-      lastSync: new Date().toISOString(),
-    };
-
-    this.notify();
-    return newProduct;
-  }
-
-  public updateProduct(id: string, updates: Partial<InventoryProduct>) {
-    const index = this.state.products.findIndex((p) => p.id === id);
-    if (index === -1) return null;
-
-    const oldProduct = this.state.products[index];
-    const updatedStock = updates.stock !== undefined ? Number(updates.stock) : oldProduct.stock;
-    const threshold = updates.lowStockThreshold || oldProduct.lowStockThreshold || 15;
-
-    let calculatedStatus = oldProduct.status;
-    if (updates.status) {
-      calculatedStatus = updates.status;
-    } else if (updates.stock !== undefined) {
-      if (updatedStock === 0) calculatedStatus = "Out of Stock";
-      else if (updatedStock <= threshold) calculatedStatus = "Low Stock";
-      else calculatedStatus = "In Stock";
-    }
-
-    const updatedProduct: InventoryProduct = {
-      ...oldProduct,
-      ...updates,
-      stock: updatedStock,
-      status: calculatedStatus,
-      price: updates.price !== undefined ? Number(updates.price) : oldProduct.price,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    const newProducts = [...this.state.products];
-    newProducts[index] = updatedProduct;
-    const newMetrics = computeMetrics(newProducts);
-
-    let newAlerts = this.state.alerts;
-    if (oldProduct.status !== updatedProduct.status) {
-      const isCritical = updatedProduct.status === "Out of Stock";
-      const isWarning = updatedProduct.status === "Low Stock";
-      const alert: InventoryAlert = {
-        id: `alert-${Date.now()}`,
-        title: isCritical
-          ? `${updatedProduct.name} is now Out of Stock`
-          : isWarning
-          ? `${updatedProduct.name} reached Low Stock threshold`
-          : `${updatedProduct.name} restocked (${updatedProduct.stock} units)`,
-        subtitle: `SKU: ${updatedProduct.sku} • Stock: ${updatedProduct.stock}`,
-        time: "Just now",
-        type: isCritical ? "critical" : isWarning ? "warning" : "success",
-        timestamp: Date.now(),
-      };
-      newAlerts = [alert, ...newAlerts.slice(0, 9)];
-    }
-
-    this.state = {
-      ...this.state,
-      products: newProducts,
-      alerts: newAlerts,
-      metrics: newMetrics,
-      lastSync: new Date().toISOString(),
-    };
-
-    this.notify();
-    return updatedProduct;
-  }
-
-  public adjustStock(id: string, deltaOrExact: number, isDelta = true) {
-    const product = this.state.products.find((p) => p.id === id);
-    if (!product) return null;
-
-    const newStock = isDelta ? Math.max(0, product.stock + deltaOrExact) : Math.max(0, deltaOrExact);
-    return this.updateProduct(id, { stock: newStock });
-  }
-
-  public deleteProduct(id: string) {
-    const product = this.state.products.find((p) => p.id === id);
-    if (!product) return false;
-
-    const newProducts = this.state.products.filter((p) => p.id !== id);
-    const newMetrics = computeMetrics(newProducts);
-
-    const newAlert: InventoryAlert = {
-      id: `alert-${Date.now()}`,
-      title: `Product Removed`,
-      subtitle: `${product.name} (${product.sku}) removed from inventory`,
-      time: "Just now",
-      type: "warning",
-      timestamp: Date.now(),
-    };
-
-    this.state = {
-      ...this.state,
-      products: newProducts,
-      alerts: [newAlert, ...this.state.alerts.slice(0, 9)],
-      metrics: newMetrics,
-      lastSync: new Date().toISOString(),
-    };
-
-    this.notify();
-    return true;
-  }
-
-  public bulkImport(newProductsList: Array<Omit<InventoryProduct, "id">>): number {
-    const prepared: InventoryProduct[] = newProductsList.map((p, idx) => ({
-      ...p,
-      id: `import-${Date.now()}-${idx}`,
-      stock: Number(p.stock) || 0,
-      price: Number(p.price) || 0,
-      status: p.stock === 0 ? "Out of Stock" : (p.stock <= (p.lowStockThreshold || 15) ? "Low Stock" : "In Stock"),
-      lastUpdated: new Date().toISOString(),
-    }));
-
-    const combined = [...prepared, ...this.state.products];
-    const metrics = computeMetrics(combined);
-
-    const alert: InventoryAlert = {
-      id: `alert-${Date.now()}`,
-      title: `Catalog Import Completed`,
-      subtitle: `Successfully imported ${prepared.length} products`,
-      time: "Just now",
-      type: "success",
-      timestamp: Date.now(),
-    };
-
-    this.state = {
-      ...this.state,
-      products: combined,
-      alerts: [alert, ...this.state.alerts.slice(0, 9)],
-      metrics,
-      lastSync: new Date().toISOString(),
-    };
-
-    this.notify();
-    return prepared.length;
-  }
-
-  public triggerAutomateReorder(): { reorderedCount: number; message: string } {
-    const lowAndOutOfStock = this.state.products.filter(
-      (p) => p.status === "Low Stock" || p.status === "Out of Stock" || p.stock <= (p.lowStockThreshold || 15)
-    );
-
-    if (lowAndOutOfStock.length === 0) {
-      return { reorderedCount: 0, message: "All stock levels are optimal. No replenishment needed." };
-    }
-
-    const updatedProducts = this.state.products.map((p) => {
-      if (p.status === "Low Stock" || p.status === "Out of Stock" || p.stock <= (p.lowStockThreshold || 15)) {
-        const replenished = p.stock + 50;
-        return {
-          ...p,
-          stock: replenished,
-          status: "In Stock" as const,
-          lastUpdated: new Date().toISOString(),
-        };
-      }
-      return p;
+  public async createProductAsync(payload: InventoryProductPayload) {
+    const created = await createInventoryProduct({
+      name: payload.name.trim(),
+      subtitle: payload.subtitle?.trim() || "",
+      sku: payload.sku.trim(),
+      category: payload.category || "General",
+      stock: Number(payload.stock) || 0,
+      price: Number(payload.price) || 0,
+      low_stock_threshold: Number(payload.low_stock_threshold) || 15,
+      image: payload.image ?? null,
     });
+    await this.syncFromBackend(true);
+    return mapRemoteProduct(created as Record<string, unknown>);
+  }
 
-    const newMetrics = computeMetrics(updatedProducts);
+  public async updateProductAsync(id: string, payload: Partial<InventoryProductPayload>) {
+    const body: Record<string, unknown> = {};
+    if (payload.name !== undefined) body.name = payload.name.trim();
+    if (payload.subtitle !== undefined) body.subtitle = payload.subtitle.trim();
+    if (payload.sku !== undefined) body.sku = payload.sku.trim();
+    if (payload.category !== undefined) body.category = payload.category;
+    if (payload.stock !== undefined) body.stock = Number(payload.stock) || 0;
+    if (payload.price !== undefined) body.price = Number(payload.price) || 0;
+    if (payload.low_stock_threshold !== undefined) {
+      body.low_stock_threshold = Number(payload.low_stock_threshold) || 15;
+    }
+    if (payload.image !== undefined) body.image = payload.image;
+    const updated = await updateInventoryProduct(id, body);
+    await this.syncFromBackend(true);
+    return mapRemoteProduct(updated as Record<string, unknown>);
+  }
 
-    const poNumber = `PO-${Math.floor(1000 + Math.random() * 9000)}`;
-    const alert: InventoryAlert = {
-      id: `alert-${Date.now()}`,
-      title: `Automated Reorder Executed`,
-      subtitle: `${poNumber} generated for ${lowAndOutOfStock.length} items (+50 units each)`,
-      time: "Just now",
-      type: "success",
-      timestamp: Date.now(),
-    };
+  public async deleteProductAsync(id: string) {
+    await deleteInventoryProduct(id);
+    await this.syncFromBackend(true);
+  }
 
-    this.state = {
-      ...this.state,
-      products: updatedProducts,
-      alerts: [alert, ...this.state.alerts.slice(0, 9)],
-      metrics: newMetrics,
-      lastSync: new Date().toISOString(),
-    };
+  public async adjustStockAsync(id: string, amount: number, isDelta = true) {
+    const updated = await adjustInventoryStock(id, amount, isDelta);
+    await this.syncFromBackend(true);
+    return mapRemoteProduct(updated as Record<string, unknown>);
+  }
 
-    this.notify();
-    return {
-      reorderedCount: lowAndOutOfStock.length,
-      message: `Automated PO #${poNumber} placed for ${lowAndOutOfStock.length} items. Stock levels replenished!`,
-    };
+  public async importProductsAsync(rows: InventoryProductPayload[]) {
+    const products = rows.map((row) => ({
+      name: row.name.trim(),
+      subtitle: row.subtitle?.trim() || "Imported",
+      sku: row.sku.trim(),
+      category: row.category || "Others",
+      stock: Number(row.stock) || 0,
+      price: Number(row.price) || 0,
+      low_stock_threshold: Number(row.low_stock_threshold) || 15,
+    }));
+    const result = await bulkCreateInventoryProducts(products);
+    await this.syncFromBackend(true);
+    return result.count;
+  }
+
+  public async deleteProductsAsync(ids: string[]) {
+    const errors: string[] = [];
+    for (const id of ids) {
+      try {
+        await deleteInventoryProduct(id);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `Failed to delete ${id}`);
+      }
+    }
+    await this.syncFromBackend(true);
+    if (errors.length === ids.length) {
+      throw new Error(errors[0] || "Failed to delete products.");
+    }
   }
 
   public resetToDefault() {
+    removeScopedJson(STORAGE_KEY, this.ownerId);
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem(STORAGE_KEY);
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
-    const initialProducts = generateInitialProducts();
-    this.state = {
-      products: initialProducts,
-      alerts: DEFAULT_ALERTS,
-      metrics: computeMetrics(initialProducts),
-      lastSync: new Date().toISOString(),
+    this.ownerId = null;
+    this.remoteRevision = null;
+    this.hasSyncedOnce = false;
+    this.state = emptyState(true);
+    this.notify(false);
+  }
+
+  public connectLive(): () => void {
+    if (typeof window === "undefined") return () => undefined;
+    this.liveConnectionCount += 1;
+    if (this.liveConnectionCount === 1) {
+      void this.syncFromBackend(true);
+      this.liveSyncTimer = window.setInterval(() => {
+        if (document.visibilityState === "visible") void this.syncFromBackend();
+      }, 5000);
+      this.visibilityHandler = () => {
+        if (document.visibilityState === "visible") void this.syncFromBackend();
+      };
+      document.addEventListener("visibilitychange", this.visibilityHandler);
+    }
+    return () => {
+      this.liveConnectionCount = Math.max(0, this.liveConnectionCount - 1);
+      if (this.liveConnectionCount === 0) {
+        if (this.liveSyncTimer !== null) {
+          window.clearInterval(this.liveSyncTimer);
+          this.liveSyncTimer = null;
+        }
+        if (this.visibilityHandler) {
+          document.removeEventListener("visibilitychange", this.visibilityHandler);
+          this.visibilityHandler = null;
+        }
+      }
     };
-    this.notify();
+  }
+
+  public syncFromBackend(force = false): Promise<void> {
+    if (this.syncPromise) return this.syncPromise;
+    this.syncPromise = (async () => {
+      if (!this.hasSyncedOnce) this.setMeta({ booting: true, syncError: null });
+      try {
+        const summary = await fetchInventorySummary();
+        if (!force && summary.revision === this.remoteRevision && this.hasSyncedOnce) {
+          this.setMeta({ booting: false, syncError: null });
+          return;
+        }
+        const remote = await fetchInventoryProducts({ limit: 500 });
+        if (!Array.isArray(remote)) {
+          throw new Error("Invalid inventory response from server.");
+        }
+        this.applyRemoteProducts(remote, summary.revision);
+        this.setMeta({ booting: false, syncError: null });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Could not load inventory from the server.";
+        // Never keep inventing products offline — clear local rows if we have never synced.
+        if (!this.hasSyncedOnce) {
+          const cached = this.ownerId
+            ? readScopedJson<InventoryState>(STORAGE_KEY, this.ownerId)
+            : null;
+          // Prefer empty over stale local-only invents; only restore if cache looks synced.
+          if (cached && Array.isArray(cached.products) && cached.products.length === 0) {
+            this.state = {
+              products: [],
+              alerts: [],
+              metrics: emptyMetrics(),
+              lastSync: cached.lastSync || new Date().toISOString(),
+              booting: false,
+              syncError: message,
+            };
+          } else {
+            this.state = {
+              ...emptyState(false),
+              syncError: message,
+            };
+          }
+          this.notify(false);
+        } else {
+          this.setMeta({ booting: false, syncError: message });
+        }
+      } finally {
+        this.syncPromise = null;
+      }
+    })();
+    return this.syncPromise;
+  }
+
+  private applyRemoteProducts(remote: Array<Record<string, unknown>>, revision: string) {
+    const products = remote.map(mapRemoteProduct);
+    // Never trust a remote payload that matches the old generated demo catalog.
+    const safeProducts = looksLikeLegacyDemoCatalog(products) ? [] : products;
+    this.remoteRevision = revision;
+    this.state = {
+      products: safeProducts,
+      alerts: deriveAlerts(safeProducts),
+      metrics: computeMetrics(safeProducts),
+      lastSync: new Date().toISOString(),
+      booting: false,
+      syncError: null,
+    };
+    this.hasSyncedOnce = true;
+    this.notify(true);
   }
 }
 
