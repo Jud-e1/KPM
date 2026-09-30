@@ -11,6 +11,9 @@ class UserSignup(BaseModel):
     organization: Optional[str] = Field(None, max_length=120)
     business_type: Optional[str] = Field(None, max_length=120)
     invite_token: Optional[str] = None
+
+
+class UserLogin(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
 
