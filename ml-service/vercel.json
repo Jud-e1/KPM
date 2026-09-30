@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/internal/tick",
-      "schedule": "* * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }
