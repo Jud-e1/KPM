@@ -49,6 +49,21 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
+    PUBLIC_APP_URL: str = "https://kpm-azane.vercel.app"
+    API_PUBLIC_URL: str = "https://kpm-api.vercel.app"
+
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM: str = "KPM <onboarding@resend.dev>"
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+
+    STRIPE_SECRET_KEY: str | None = None
+    STRIPE_WEBHOOK_SECRET: str | None = None
+    STRIPE_PRICE_GROWTH_MONTHLY: str | None = None
+    STRIPE_PRICE_GROWTH_YEARLY: str | None = None
+
     # Shared secret for ml-service → core internal routes (empty = open in local/dev)
     ML_SERVICE_TOKEN: str | None = None
 

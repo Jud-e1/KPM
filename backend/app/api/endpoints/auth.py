@@ -1,18 +1,25 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.account_tokens import consume_auth_token, find_invite, issue_auth_token
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.mail import send_email
 from app.core.security import create_access_token, get_current_user, hash_password, verify_password
 from app.core.tenancy import require_business_id, resolve_business_for_user
 from app.core.types import new_uuid
 from app.models.accounting import AccountingProfileModel
-from app.models.business import Business, ensure_default_business
+from app.models.business import Business, BusinessMembership, ensure_default_business
 from app.models.user import User
 from app.schemas.auth import (
+    EmailVerifyRequest,
     GoogleAuthRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     TokenResponse,
     UserLogin,
     UserResponse,
@@ -42,6 +49,8 @@ def serialize_user(user: User, business: Business | None = None) -> UserResponse
         business_id=bid,
         role=user.role,
         is_active=user.is_active,
+        email_verified=bool(user.email_verified),
+        plan=(business.plan if business is not None and business.plan else "free"),
         created_at=user.created_at,
     )
 
@@ -63,6 +72,17 @@ def sync_accounting_profile(db: Session, user: User, business: Business) -> None
         db.commit()
     except SQLAlchemyError:
         db.rollback()
+
+
+def _send_verification(db: Session, user: User) -> None:
+    raw = issue_auth_token(db, user, "verify", 48)
+    db.commit()
+    link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/verify-email?token={raw}"
+    send_email(
+        user.email,
+        "Verify your KPM email",
+        f"Confirm {user.email} for KPM.\n\n{link}\n",
+    )
 
 
 def _issue_token(db: Session, user: User) -> TokenResponse:
@@ -94,16 +114,37 @@ def signup(payload: UserSignup, db: Session = Depends(get_db)):
         business_type=business_type,
         role="Admin",
         is_active=True,
+        email_verified=False,
     )
-    business, membership = ensure_default_business(
-        user_id=user_id,
-        name=org_name,
-        business_type=business_type,
-    )
-    db.add(user)
-    db.flush()
-    db.add(business)
-    db.add(membership)
+    invite = find_invite(db, payload.invite_token) if payload.invite_token else None
+    if payload.invite_token and invite is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invite is invalid or expired")
+    if invite is not None and invite.email != email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This invite was sent to a different email")
+    if invite is not None:
+        user.role = invite.role
+        db.add(user)
+        db.flush()
+        db.add(
+            BusinessMembership(
+                id=new_uuid(),
+                business_id=invite.business_id,
+                user_id=user_id,
+                role=invite.role,
+            )
+        )
+        invite.accepted_at = datetime.now(timezone.utc)
+        business = db.query(Business).filter(Business.id == invite.business_id).first()
+    else:
+        business, membership = ensure_default_business(
+            user_id=user_id,
+            name=org_name,
+            business_type=business_type,
+        )
+        db.add(user)
+        db.flush()
+        db.add(business)
+        db.add(membership)
     try:
         db.commit()
         db.refresh(user)
@@ -112,7 +153,10 @@ def signup(payload: UserSignup, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error))
 
+    if business is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
     sync_accounting_profile(db, user, business)
+    _send_verification(db, user)
     token = create_access_token(
         str(user.id),
         {"email": user.email, "business_id": str(business.id)},
@@ -133,8 +177,6 @@ def signin(payload: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/google", response_model=TokenResponse)
 def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
-    from app.core.config import settings
-
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -176,6 +218,7 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
             business_type=None,
             role="Admin",
             is_active=True,
+            email_verified=True,
         )
         business, membership = ensure_default_business(user_id=user_id, name=full_name[:120])
         db.add(user)
@@ -190,6 +233,7 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error))
     elif not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive")
+    user.email_verified = True
 
     return _issue_token(db, user)
 
@@ -227,3 +271,43 @@ def update_me(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error))
     sync_accounting_profile(db, current_user, business)
     return serialize_user(current_user, business)
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    email = payload.email.lower().strip()
+    user = db.query(User).filter(User.email == email).first()
+    if user and user.hashed_password:
+        raw = issue_auth_token(db, user, "reset", 1)
+        db.commit()
+        link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/reset-password?token={raw}"
+        send_email(user.email, "Reset your KPM password", f"Reset your password:\n\n{link}\n")
+    return {"ok": True}
+
+
+@router.post("/reset-password")
+def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    user = consume_auth_token(db, payload.token, "reset")
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset link is invalid or expired")
+    user.hashed_password = hash_password(payload.password)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/verify-email")
+def verify_email(payload: EmailVerifyRequest, db: Session = Depends(get_db)):
+    user = consume_auth_token(db, payload.token, "verify")
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification link is invalid or expired")
+    user.email_verified = True
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/verify-email/send")
+def resend_verification(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.email_verified:
+        return {"ok": True}
+    _send_verification(db, current_user)
+    return {"ok": True}

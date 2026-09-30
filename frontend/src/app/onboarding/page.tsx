@@ -71,6 +71,8 @@ export default function OnboardingPage() {
 
   const [activeConnector, setActiveConnector] = useState<ConnectorDef | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [shopName, setShopName] = useState("");
+  const [oauthNote, setOauthNote] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const applyState = (next: OnboardingState) => {
@@ -725,9 +727,39 @@ export default function OnboardingPage() {
             </div>
 
             {activeConnector.oauthStyle && (
-              <p className="mt-3 rounded-xl bg-[var(--app-hover)] px-3 py-2 text-[12px] text-[var(--app-muted)]">
-                A sign-in window for this tool is not available yet. You can paste a key, or skip and connect later.
-              </p>
+              <div className="mt-3 space-y-2">
+                {activeConnector.id === "shopify" && (
+                  <input
+                    value={shopName}
+                    onChange={(event) => setShopName(event.target.value)}
+                    placeholder="your-store"
+                    className="w-full rounded-xl border border-[var(--app-border)] px-3 py-2 text-sm"
+                  />
+                )}
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center rounded-full bg-[#0F172A] px-4 text-sm font-semibold text-white"
+                  onClick={() => {
+                    void (async () => {
+                      const { startConnectorOAuth } = await import("@/lib/api");
+                      const url = await startConnectorOAuth(
+                        activeConnector.id,
+                        activeConnector.id === "shopify" ? shopName : undefined,
+                      ).catch(() => null);
+                      if (!url) {
+                        setOauthNote("A sign-in window for this tool is not available yet. You can paste a key, or skip and connect later.");
+                        return;
+                      }
+                      window.location.href = url;
+                    })();
+                  }}
+                >
+                  Sign in with {activeConnector.name}
+                </button>
+                {oauthNote && (
+                  <p className="rounded-xl bg-[var(--app-hover)] px-3 py-2 text-[12px] text-[var(--app-muted)]">{oauthNote}</p>
+                )}
+              </div>
             )}
 
             {activeConnector.id !== "kpm_books" && (

@@ -22,6 +22,9 @@ class Business(Base):
     name = Column(String(120), nullable=False)
     business_type = Column(String(80), nullable=True)
     currency = Column(String(8), nullable=False, default="USD")
+    plan = Column(String(40), nullable=False, default="free")
+    stripe_customer_id = Column(String(80), nullable=True)
+    stripe_subscription_id = Column(String(80), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

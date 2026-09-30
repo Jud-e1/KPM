@@ -588,6 +588,20 @@ export default function DashboardPage() {
       }}
     >
       <div className="space-y-5">
+        {authUser && authUser.email_verified === false && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-3">
+            <span>Confirm {authUser.email} so password resets and invites reach you.</span>
+            <button
+              type="button"
+              className="rounded-full bg-[#0F172A] px-3 py-1.5 text-xs font-semibold text-white"
+              onClick={() => {
+                void import("@/lib/api").then(({ resendVerificationEmail }) => resendVerificationEmail());
+              }}
+            >
+              Resend email
+            </button>
+          </div>
+        )}
         <WelcomeBanner
           title={greeting}
           dateLabel={formatLongDate(now)}

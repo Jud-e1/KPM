@@ -18,6 +18,7 @@ class User(Base):
     business_type = Column(String(80), nullable=True)
     role = Column(String(80), nullable=False, default="Admin")
     is_active = Column(Boolean, nullable=False, default=True)
+    email_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

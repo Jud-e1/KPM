@@ -10,9 +10,7 @@ class UserSignup(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=120)
     organization: Optional[str] = Field(None, max_length=120)
     business_type: Optional[str] = Field(None, max_length=120)
-
-
-class UserLogin(BaseModel):
+    invite_token: Optional[str] = None
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
 
@@ -26,6 +24,8 @@ class UserResponse(BaseModel):
     business_id: Optional[str] = None
     role: str
     is_active: bool
+    email_verified: bool = False
+    plan: str = "free"
     created_at: datetime
 
     class Config:
@@ -43,6 +43,19 @@ class UserUpdate(BaseModel):
     organization: Optional[str] = Field(None, max_length=120)
     business_type: Optional[str] = Field(None, max_length=120)
     role: Optional[str] = Field(None, max_length=80)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., min_length=10)
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class EmailVerifyRequest(BaseModel):
+    token: str = Field(..., min_length=10)
 
 
 class GoogleAuthRequest(BaseModel):

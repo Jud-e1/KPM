@@ -10,6 +10,8 @@ export type AuthUser = {
   business_type: string | null;
   role: string;
   is_active: boolean;
+  email_verified?: boolean;
+  plan?: string;
   created_at: string;
 };
 

@@ -265,12 +265,12 @@ export default function SignInPage() {
                       <label className="block font-semibold text-[var(--app-ink)]">
                         Password <span className="text-rose-500">*</span>
                       </label>
-                      <button
-                        type="button"
-                        className="text-[11px] text-[var(--app-muted)] hover:text-[var(--app-ink)] font-medium cursor-pointer"
+                      <Link
+                        href="/forgot-password"
+                        className="text-[11px] text-[var(--app-muted)] hover:text-[var(--app-ink)] font-medium"
                       >
                         Forgot password?
-                      </button>
+                      </Link>
                     </div>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-[var(--app-faint)] absolute left-3 top-1/2 -translate-y-1/2" />

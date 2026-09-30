@@ -84,6 +84,7 @@ export default function SignupPage() {
     try {
       const { signupAccount, signinAccount } = await import("@/lib/api");
       const { authStore } = await import("@/lib/authStore");
+      const params = new URLSearchParams(window.location.search);
       const result =
         authMode === "signup"
           ? await signupAccount({
@@ -92,11 +93,21 @@ export default function SignupPage() {
               full_name: fullName.trim(),
               organization: fullName.trim(),
               business_type: businessType,
+              invite_token: params.get("invite") || undefined,
             })
           : await signinAccount({ email: email.trim(), password });
       authStore.setSession(result.access_token, result.user);
       setSubmitted(true);
-      setTimeout(() => router.push("/dashboard"), 700);
+      const plan = params.get("plan");
+      const interval = params.get("interval") || "month";
+      const invite = params.get("invite");
+      const next =
+        authMode === "signin" && invite
+          ? `/invite?token=${encodeURIComponent(invite)}`
+          : plan === "growth"
+            ? `/settings?checkout=growth&interval=${interval}`
+            : "/dashboard";
+      setTimeout(() => router.push(next), 700);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Authentication failed");
     } finally {

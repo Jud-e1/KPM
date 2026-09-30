@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.policy.autonomy import decide
+from app.worker import poll_once
 from app.services.anomaly import (
     IF_MIN_ROWS,
     build_anomaly_proposal,
@@ -58,6 +60,19 @@ class AutonomyProbe(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "kpm-ml", "version": "0.1.0"}
+
+
+class TickResponse(BaseModel):
+    processed: int
+
+
+@app.api_route("/internal/tick", methods=["GET", "POST"], response_model=TickResponse)
+def tick(authorization: str | None = Header(default=None), x_ml_service_token: str | None = Header(default=None)):
+    expected = settings.ML_SERVICE_TOKEN
+    bearer = (authorization or "").removeprefix("Bearer ").strip()
+    if expected and x_ml_service_token != expected and bearer != expected:
+        raise HTTPException(status_code=401, detail="Invalid ML service token")
+    return TickResponse(processed=poll_once())
 
 
 @app.post("/score/reconcile")

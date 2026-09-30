@@ -1,7 +1,21 @@
 import { SystemHealth, Item, ItemCreateInput, ItemUpdateInput } from "@/types";
 import type { AuthUser } from "@/lib/authStore";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+const configuredApi = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+const localApi = configuredApi || "http://127.0.0.1:8000/api/v1";
+
+function isLoopback(url: string) {
+  return url.includes("://127.0.0.1") || url.includes("://localhost");
+}
+
+function resolveApiBase() {
+  if (typeof window === "undefined") return localApi;
+  if (configuredApi && !isLoopback(configuredApi)) return configuredApi;
+  return "/api/v1";
+}
+
+/** Browser calls stay on this site. Next rewrites /api/v1 to the real backend. */
+const API_BASE = resolveApiBase();
 
 function authHeaders(extra?: HeadersInit): HeadersInit {
   const headers: Record<string, string> = {
@@ -16,7 +30,10 @@ function authHeaders(extra?: HeadersInit): HeadersInit {
 
 async function readError(res: Response, fallback: string) {
   if (res.status === 401) {
-    if (typeof window !== "undefined") {
+    const errorData = await res.json().catch(() => ({ detail: "" }));
+    const detail = typeof errorData.detail === "string" ? errorData.detail : "";
+    const lostSession = !detail || /token|not authenticated|inactive|not found/i.test(detail);
+    if (lostSession && typeof window !== "undefined") {
       try {
         localStorage.removeItem("kpm_auth_token");
         localStorage.removeItem("kpm_auth_user");
@@ -28,6 +45,7 @@ async function readError(res: Response, fallback: string) {
         window.location.href = `/signin?next=${next}`;
       }
     }
+    if (detail && !lostSession) return detail;
     return "Session expired. Please sign in again.";
   }
   if (res.status === 409) {
@@ -554,6 +572,7 @@ export async function signupAccount(input: {
   full_name: string;
   organization?: string;
   business_type?: string;
+  invite_token?: string;
 }): Promise<AuthTokenResponse> {
   const res = await fetch(`${API_BASE}/auth/signup`, {
     method: "POST",
@@ -577,6 +596,91 @@ export async function signinAccount(input: {
   });
   if (!res.ok) throw new Error(await readError(res, "Sign in failed"));
   return await res.json();
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not send reset email"));
+}
+
+export async function confirmPasswordReset(token: string, password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not reset password"));
+}
+
+export async function verifyEmailToken(token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/verify-email`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not verify email"));
+}
+
+export async function resendVerificationEmail(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/verify-email/send`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not send verification email"));
+}
+
+export async function startGrowthCheckout(interval: "month" | "year"): Promise<string> {
+  const res = await fetch(`${API_BASE}/billing/checkout`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ interval }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Checkout is unavailable"));
+  const data = (await res.json()) as { url: string };
+  return data.url;
+}
+
+export async function openBillingPortal(): Promise<string> {
+  const res = await fetch(`${API_BASE}/billing/portal`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Billing portal is unavailable"));
+  const data = (await res.json()) as { url: string };
+  return data.url;
+}
+
+export async function startConnectorOAuth(providerId: string, shop?: string): Promise<string | null> {
+  const query = shop ? `?shop=${encodeURIComponent(shop)}` : "";
+  const res = await fetch(`${API_BASE}/onboarding/oauth/${providerId}/start${query}`, {
+    headers: authHeaders(),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await readError(res, "Could not start sign-in"));
+  const data = (await res.json()) as { url: string };
+  return data.url;
+}
+
+export async function inviteTeammate(email: string, role: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/team/invites`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not send invite"));
+}
+
+export async function acceptTeamInvite(token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/team/invites/accept`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw new Error(await readError(res, "Could not accept invite"));
 }
 
 export async function googleAuth(idToken: string): Promise<AuthTokenResponse> {

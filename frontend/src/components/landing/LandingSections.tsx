@@ -265,6 +265,34 @@ export const PricingSection: React.FC = () => {
                   ))}
                 </ul>
 
+                {plan.name === "Growth" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const interval = billing === "yearly" ? "year" : "month";
+                      const token = window.localStorage.getItem("kpm_auth_token");
+                      if (!token) {
+                        window.location.href = `/signup?plan=growth&interval=${interval}`;
+                        return;
+                      }
+                      void import("@/lib/api").then(async ({ startGrowthCheckout }) => {
+                        try {
+                          window.location.href = await startGrowthCheckout(interval);
+                        } catch {
+                          window.location.href = "/signup?plan=growth";
+                        }
+                      });
+                    }}
+                    className={`inline-flex items-center justify-center gap-2 rounded-full py-3 text-[14px] font-semibold transition-all duration-200 ease-out hover:scale-[1.02] ${
+                      plan.highlighted
+                        ? "bg-[var(--app-surface)] text-[#0F172A] hover:bg-[var(--app-hover)]"
+                        : "bg-[#0F172A] text-white hover:bg-[#1E293B]"
+                    }`}
+                  >
+                    {plan.cta}
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
                 <Link
                   href={plan.href}
                   className={`inline-flex items-center justify-center gap-2 rounded-full py-3 text-[14px] font-semibold transition-all duration-200 ease-out hover:scale-[1.02] ${
@@ -276,6 +304,7 @@ export const PricingSection: React.FC = () => {
                   {plan.cta}
                   <ArrowRight className="w-4 h-4" />
                 </Link>
+                )}
               </div>
               </TiltCard>
               </div>

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/internal/tick",
+      "schedule": "* * * * *"
+    }
+  ]
+}

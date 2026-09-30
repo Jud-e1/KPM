@@ -65,6 +65,8 @@ export default function SettingsPage() {
   const [activeConnector, setActiveConnector] = useState<ConnectorDef | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("Staff");
 
   useEffect(() => {
     const unsubscribe = authStore.subscribe((state) => {
@@ -83,6 +85,19 @@ export default function SettingsPage() {
 
   useEffect(() => {
     return themeStore.subscribe((next) => setTheme(next));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") !== "growth") return;
+    const interval = params.get("interval") === "year" ? "year" : "month";
+    void import("@/lib/api").then(async ({ startGrowthCheckout }) => {
+      try {
+        window.location.href = await startGrowthCheckout(interval);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Checkout is unavailable");
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -327,6 +342,61 @@ export default function SettingsPage() {
           {saving ? "Saving…" : "Save account"}
         </button>
       </form>
+
+      <section className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--app-ink)]">Plan</h2>
+            <p className="text-sm text-[var(--app-muted)]">Current plan: {user?.plan || "free"}</p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void import("@/lib/api").then(async ({ openBillingPortal }) => {
+                try {
+                  window.location.href = await openBillingPortal();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Billing portal is unavailable");
+                }
+              });
+            }}
+          >
+            Manage billing
+          </Button>
+        </div>
+        <form
+          className="flex flex-wrap gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void import("@/lib/api").then(async ({ inviteTeammate }) => {
+              try {
+                await inviteTeammate(inviteEmail.trim(), inviteRole);
+                setInviteEmail("");
+                setMessage("Invite sent.");
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not send invite");
+              }
+            });
+          }}
+        >
+          <h2 className="w-full text-sm font-semibold text-[var(--app-ink)]">Invite a teammate</h2>
+          <input
+            type="email"
+            required
+            value={inviteEmail}
+            onChange={(event) => setInviteEmail(event.target.value)}
+            placeholder="teammate@company.com"
+            className={fieldClass}
+          />
+          <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className={fieldClass}>
+            <option>Staff</option>
+            <option>Manager</option>
+            <option>Admin</option>
+          </select>
+          <Button type="submit">Send invite</Button>
+        </form>
+      </section>
 
       <section
         id="settings-appearance"

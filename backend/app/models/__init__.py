@@ -8,6 +8,7 @@ from app.models.accounting import (
 )
 from app.models.user import User
 from app.models.business import Business, BusinessMembership
+from app.models.access import AuthTokenModel, BusinessInviteModel
 from app.models.partners import CustomerModel, SupplierModel, SupplierRequestModel
 from app.models.onboarding import (
     OnboardingProfileModel,
@@ -36,6 +37,8 @@ __all__ = [
     "User",
     "Business",
     "BusinessMembership",
+    "AuthTokenModel",
+    "BusinessInviteModel",
     "CustomerModel",
     "SupplierModel",
     "SupplierRequestModel",
